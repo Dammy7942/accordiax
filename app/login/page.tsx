@@ -8,66 +8,43 @@ export default function LoginPage() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [buttonText, setButtonText] = useState('Send magic link');
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestInProgress = useRef(false);
 
   const handleMagicLink = async () => {
-    // Validate email
     if (!email.trim()) {
       setMessage('Please enter your email address.');
       return;
     }
 
-    // Cancel any ongoing request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    if (requestInProgress.current) return; // prevent double submission
 
-    // Set up new abort controller for timeout
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
-
+    requestInProgress.current = true;
     setLoading(true);
     setButtonText('Sending...');
     setMessage('');
 
     try {
-      const { error } = await supabase.auth.signInWithOtp(
-        {
-          email,
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback` }
-        },
-        { abortSignal: controller.signal }
-      );
-
-      clearTimeout(timeoutId);
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` }
+      });
 
       if (error) {
-        if (error.message === 'AbortError') {
-          setMessage('Network timeout. Please check your connection and try again.');
-        } else {
-          setMessage(error.message);
-        }
+        setMessage(error.message);
         setButtonText('Send magic link');
       } else {
         setMessage('✨ Magic link sent! Check your email.');
         setButtonText('Link sent!');
-        // Reset button after 3 seconds
         setTimeout(() => {
           setButtonText('Send magic link');
         }, 3000);
       }
     } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        setMessage('Network timeout. Please check your connection and try again.');
-      } else {
-        setMessage('Network error. Please check your connection and try again.');
-      }
+      setMessage('Network error. Please check your connection and try again.');
       setButtonText('Send magic link');
     } finally {
       setLoading(false);
-      abortControllerRef.current = null;
+      requestInProgress.current = false;
     }
   };
 
