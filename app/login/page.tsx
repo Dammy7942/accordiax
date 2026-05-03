@@ -23,10 +23,14 @@ export default function LoginPage() {
     setButtonText('Sending...');
     setMessage('');
 
+    // Use environment variable for redirect base, fallback to current origin
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    const redirectTo = `${baseUrl}/auth/callback`;
+
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` }
+        options: { emailRedirectTo: redirectTo }
       });
 
       if (error) {
