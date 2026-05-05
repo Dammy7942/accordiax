@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import RoleSwitcher from '@/components/RoleSwitcher';
 
 interface Request {
   id: string;
@@ -17,6 +18,7 @@ export default function ConsultantDashboard() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<'student' | 'consultant' | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -52,6 +54,7 @@ export default function ConsultantDashboard() {
         return;
       }
 
+      setUserRole(profile.role);
       if (profile?.full_name) setUserName(profile.full_name);
       else setUserName(user.email || null);
 
@@ -147,6 +150,7 @@ export default function ConsultantDashboard() {
           <h1 className="text-2xl font-bold text-purple-900">Accordiax</h1>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-700">{userName || userEmail}</span>
+            {userRole && <RoleSwitcher currentRole={userRole} />}
             <button onClick={handleLogout} className="text-red-600 text-sm hover:underline">Logout</button>
           </div>
         </div>
