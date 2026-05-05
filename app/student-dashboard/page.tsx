@@ -14,13 +14,26 @@ interface Request {
   created_at: string;
 }
 
+interface Agreement {
+  id: string;
+  request_id: string;
+  consultant_name: string;
+  scope: string;
+  price: number;
+  timeline: string;
+  deliverables: string;
+  status: string;
+}
+
 export default function StudentDashboard() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'student' | 'consultant' | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
+  const [pendingOffers, setPendingOffers] = useState<Agreement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -32,7 +45,7 @@ export default function StudentDashboard() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const getUserAndRequests = async () => {
+    const getUserAndData = async () => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         router.push('/login');
@@ -40,35 +53,45 @@ export default function StudentDashboard() {
       }
       setUserEmail(user.email || null);
 
-      // Fetch profile for full name and role (safety)
+      // Fetch profile for full name and role
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('full_name, role')
         .eq('id', user.id)
         .single();
 
-      // Safety redirect: if no role, go to role selection
       if (profileError || !profile?.role) {
         router.push('/role-selection');
         return;
       }
 
       setUserRole(profile.role);
-      if (profile?.full_name) setUserName(profile.full_name);
-      else setUserName(user.email || null);
+      setUserName(profile?.full_name || user.email || null);
 
       // Fetch student's requests
-      const { data, error: reqError } = await supabase
+      const { data: reqData, error: reqError } = await supabase
         .from('requests')
         .select('*')
         .eq('student_id', user.id)
         .order('created_at', { ascending: false });
 
       if (reqError) console.error(reqError);
-      else setRequests(data || []);
+      else setRequests(reqData || []);
+
+      // Fetch pending agreements for these requests
+      if (reqData && reqData.length > 0) {
+        const requestIds = reqData.map(r => r.id);
+        const { data: agreeData, error: agreeError } = await supabase
+          .from('agreements')
+          .select('*')
+          .in('request_id', requestIds)
+          .eq('status', 'pending');
+        if (!agreeError) setPendingOffers(agreeData || []);
+      }
+
       setLoading(false);
     };
-    getUserAndRequests();
+    getUserAndData();
   }, [router]);
 
   const handleLogout = async () => {
@@ -106,15 +129,56 @@ export default function StudentDashboard() {
     } else {
       setShowModal(false);
       setFormData({ title: '', description: '', category: 'project_supervision', budget_range: '' });
-      // Refresh requests
-      const { data, error: refreshError } = await supabase
+      // Refresh requests and pending offers
+      const { data: newReqs } = await supabase
         .from('requests')
         .select('*')
         .eq('student_id', user.id)
         .order('created_at', { ascending: false });
-      if (!refreshError) setRequests(data || []);
+      setRequests(newReqs || []);
+      if (newReqs && newReqs.length > 0) {
+        const requestIds = newReqs.map(r => r.id);
+        const { data: newOffers } = await supabase
+          .from('agreements')
+          .select('*')
+          .in('request_id', requestIds)
+          .eq('status', 'pending');
+        setPendingOffers(newOffers || []);
+      } else {
+        setPendingOffers([]);
+      }
     }
     setSubmitting(false);
+  };
+
+  const handleAccept = async (agreementId: string) => {
+    setActionLoading(agreementId);
+    const { error } = await supabase
+      .from('agreements')
+      .update({ status: 'accepted' })
+      .eq('id', agreementId);
+    if (error) {
+      alert('Error accepting offer: ' + error.message);
+    } else {
+      setPendingOffers(prev => prev.filter(o => o.id !== agreementId));
+      alert('Offer accepted! You can now proceed with the consultant.');
+    }
+    setActionLoading(null);
+  };
+
+  const handleReject = async (agreementId: string) => {
+    setActionLoading(agreementId);
+    const { error } = await supabase
+      .from('agreements')
+      .update({ status: 'rejected' })
+      .eq('id', agreementId);
+    if (error) {
+      alert('Error rejecting offer: ' + error.message);
+    } else {
+      setPendingOffers(prev => prev.filter(o => o.id !== agreementId));
+      alert('Offer rejected.');
+    }
+    setActionLoading(null);
   };
 
   if (loading) {
@@ -139,6 +203,48 @@ export default function StudentDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Pending Offers Section */}
+        <div className="bg-white rounded-2xl shadow p-6 mb-8">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-4">Pending Offers</h2>
+          {pendingOffers.length === 0 ? (
+            <p className="text-gray-600">No pending offers.</p>
+          ) : (
+            <div className="space-y-4">
+              {pendingOffers.map((offer) => (
+                <div key={offer.id} className="border border-gray-300 rounded-xl p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-500">From consultant:</p>
+                      <p className="font-semibold text-gray-800">{offer.consultant_name}</p>
+                      <p className="text-sm text-gray-600 mt-2"><strong>Scope:</strong> {offer.scope}</p>
+                      <p className="text-sm text-gray-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
+                      <p className="text-sm text-gray-600"><strong>Timeline:</strong> {offer.timeline}</p>
+                      <p className="text-sm text-gray-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
+                    </div>
+                    <div className="flex gap-2 ml-4">
+                      <button
+                        onClick={() => handleAccept(offer.id)}
+                        disabled={actionLoading === offer.id}
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => handleReject(offer.id)}
+                        disabled={actionLoading === offer.id}
+                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* My Requests Section */}
         <div className="bg-white rounded-2xl shadow p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-semibold text-gray-800">My Requests</h2>
@@ -177,6 +283,7 @@ export default function StudentDashboard() {
         </div>
       </main>
 
+      {/* Modal for new request */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6">

@@ -14,12 +14,25 @@ interface Request {
   created_at: string;
 }
 
+interface Agreement {
+  id: string;
+  request_id: string;
+  consultant_name: string;
+  scope: string;
+  price: number;
+  timeline: string;
+  deliverables: string;
+  status: string;
+  created_at: string;
+}
+
 export default function ConsultantDashboard() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'student' | 'consultant' | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
+  const [myOffers, setMyOffers] = useState<Agreement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
@@ -33,7 +46,7 @@ export default function ConsultantDashboard() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const getUserAndRequests = async () => {
+    const getUserAndData = async () => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         router.push('/login');
@@ -41,35 +54,44 @@ export default function ConsultantDashboard() {
       }
       setUserEmail(user.email || null);
 
-      // Fetch profile for full name and role (safety)
+      // Fetch profile for full name and role
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('full_name, role')
         .eq('id', user.id)
         .single();
 
-      // Safety redirect: if no role, go to role selection
       if (profileError || !profile?.role) {
         router.push('/role-selection');
         return;
       }
 
       setUserRole(profile.role);
-      if (profile?.full_name) setUserName(profile.full_name);
-      else setUserName(user.email || null);
+      setUserName(profile?.full_name || user.email || null);
 
       // Fetch open requests
-      const { data, error: reqError } = await supabase
+      const { data: reqData, error: reqError } = await supabase
         .from('requests')
         .select('*')
         .eq('status', 'open')
         .order('created_at', { ascending: false });
 
       if (reqError) console.error(reqError);
-      else setRequests(data || []);
+      else setRequests(reqData || []);
+
+      // Fetch consultant's own agreements (offers made)
+      const { data: offerData, error: offerError } = await supabase
+        .from('agreements')
+        .select('*')
+        .eq('consultant_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (offerError) console.error(offerError);
+      else setMyOffers(offerData || []);
+
       setLoading(false);
     };
-    getUserAndRequests();
+    getUserAndData();
   }, [router]);
 
   const handleLogout = async () => {
@@ -131,8 +153,25 @@ export default function ConsultantDashboard() {
     } else {
       setShowModal(false);
       alert('Offer sent to student!');
+      // Refresh my offers
+      const { data: newOffers } = await supabase
+        .from('agreements')
+        .select('*')
+        .eq('consultant_id', user.id)
+        .order('created_at', { ascending: false });
+      if (newOffers) setMyOffers(newOffers);
     }
     setSubmitting(false);
+  };
+
+  const getStatusBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      accepted: 'bg-green-100 text-green-800',
+      rejected: 'bg-red-100 text-red-800',
+    };
+    const color = colors[status] || 'bg-gray-100 text-gray-800';
+    return <span className={`px-2 py-1 rounded-full text-xs font-medium ${color}`}>{status}</span>;
   };
 
   if (loading) {
@@ -157,7 +196,8 @@ export default function ConsultantDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="bg-white rounded-2xl shadow p-6">
+        {/* Open Requests Section */}
+        <div className="bg-white rounded-2xl shadow p-6 mb-8">
           <h2 className="text-2xl font-semibold mb-6 text-gray-800">Open Requests from Students</h2>
           {requests.length === 0 ? (
             <p className="text-gray-600">No open requests at the moment.</p>
@@ -186,8 +226,37 @@ export default function ConsultantDashboard() {
             </div>
           )}
         </div>
+
+        {/* My Offers Section */}
+        <div className="bg-white rounded-2xl shadow p-6">
+          <h2 className="text-2xl font-semibold mb-6 text-gray-800">My Offers</h2>
+          {myOffers.length === 0 ? (
+            <p className="text-gray-600">You haven't made any offers yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {myOffers.map((offer) => (
+                <div key={offer.id} className="border border-gray-300 rounded-xl p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-semibold text-gray-800">Offer on request #{offer.request_id.slice(0,8)}</h3>
+                        {getStatusBadge(offer.status)}
+                      </div>
+                      <p className="text-sm text-gray-600"><strong>Scope:</strong> {offer.scope}</p>
+                      <p className="text-sm text-gray-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
+                      <p className="text-sm text-gray-600"><strong>Timeline:</strong> {offer.timeline}</p>
+                      <p className="text-sm text-gray-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
+                      <p className="text-xs text-gray-400 mt-2">{new Date(offer.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </main>
 
+      {/* Modal for making an offer */}
       {showModal && selectedRequest && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6">
