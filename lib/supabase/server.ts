@@ -1,3 +1,5 @@
+// lib/supabase/server.ts
+
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
@@ -18,7 +20,8 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             );
           } catch (error) {
-            // Called from a Server Component – ignore
+            // This can happen if the `setAll` method is called from a Server Component.
+            // We can ignore the error as the middleware will handle the cookie.
           }
         },
       },

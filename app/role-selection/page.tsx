@@ -39,8 +39,8 @@ export default function RoleSelection() {
       setError(upsertError.message);
       setLoading(false);
     } else {
-      // Success – redirect
-      router.push(role === 'student' ? '/student-dashboard' : '/consultant-dashboard');
+      // Redirect to profile completion page instead of dashboard
+      router.push('/profile-completion');
     }
   };
 
@@ -88,7 +88,7 @@ export default function RoleSelection() {
           disabled={loading}
           className="bg-white hover:bg-purple-50 border-2 border-purple-200 p-8 rounded-2xl shadow-lg w-64 text-center transition transform hover:scale-105 disabled:opacity-50"
         >
-          <div className="text-5xl mb-3">👨‍🏫</div>
+          <div className="text-3xl mb-3">👨‍🏫</div>
           <div className="font-bold text-xl text-purple-700">Consultant</div>
           <p className="text-gray-500 text-sm mt-2">Offer supervision, guidance, academic support</p>
         </button>
