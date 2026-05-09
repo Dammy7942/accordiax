@@ -53,7 +53,6 @@ export default function StudentDashboard() {
       }
       setUserEmail(user.email || null);
 
-      // Fetch profile for full name and role
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('full_name, role')
@@ -68,7 +67,7 @@ export default function StudentDashboard() {
       setUserRole(profile.role);
       setUserName(profile?.full_name || user.email || null);
 
-      // Fetch student's requests
+      // Fetch student's requests (all statuses)
       const { data: reqData, error: reqError } = await supabase
         .from('requests')
         .select('*')
@@ -78,7 +77,7 @@ export default function StudentDashboard() {
       if (reqError) console.error(reqError);
       else setRequests(reqData || []);
 
-      // Fetch pending agreements for these requests
+      // Fetch pending agreements for these requests (status = 'pending')
       if (reqData && reqData.length > 0) {
         const requestIds = reqData.map(r => r.id);
         const { data: agreeData, error: agreeError } = await supabase
@@ -151,18 +150,48 @@ export default function StudentDashboard() {
     setSubmitting(false);
   };
 
-  const handleAccept = async (agreementId: string) => {
+  const handleAccept = async (agreementId: string, requestId: string) => {
     setActionLoading(agreementId);
-    const { error } = await supabase
+    // Update agreement status to accepted
+    const { error: agreeError } = await supabase
       .from('agreements')
       .update({ status: 'accepted' })
       .eq('id', agreementId);
-    if (error) {
-      alert('Error accepting offer: ' + error.message);
-    } else {
-      setPendingOffers(prev => prev.filter(o => o.id !== agreementId));
-      alert('Offer accepted! You can now proceed with the consultant.');
+    if (agreeError) {
+      alert('Error accepting offer: ' + agreeError.message);
+      setActionLoading(null);
+      return;
     }
+    // Update request status to matched (so it no longer appears as open)
+    const { error: reqError } = await supabase
+      .from('requests')
+      .update({ status: 'matched' })
+      .eq('id', requestId);
+    if (reqError) {
+      console.error('Error updating request status:', reqError);
+    }
+    // Refresh data
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: newReqs } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('student_id', user.id)
+        .order('created_at', { ascending: false });
+      setRequests(newReqs || []);
+      if (newReqs && newReqs.length > 0) {
+        const requestIds = newReqs.map(r => r.id);
+        const { data: newOffers } = await supabase
+          .from('agreements')
+          .select('*')
+          .in('request_id', requestIds)
+          .eq('status', 'pending');
+        setPendingOffers(newOffers || []);
+      } else {
+        setPendingOffers([]);
+      }
+    }
+    alert('Offer accepted! Request is now matched.');
     setActionLoading(null);
   };
 
@@ -190,7 +219,7 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       <header className="bg-white shadow-sm border-b">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-blue-900">Accordiax</h1>
@@ -211,19 +240,19 @@ export default function StudentDashboard() {
           ) : (
             <div className="space-y-4">
               {pendingOffers.map((offer) => (
-                <div key={offer.id} className="border border-gray-300 rounded-xl p-4">
+                <div key={offer.id} className="border border-gray-400 rounded-xl p-4">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <p className="text-sm text-gray-500">From consultant:</p>
+                      <p className="text-sm text-gray-600">From consultant:</p>
                       <p className="font-semibold text-gray-800">{offer.consultant_name}</p>
-                      <p className="text-sm text-gray-600 mt-2"><strong>Scope:</strong> {offer.scope}</p>
-                      <p className="text-sm text-gray-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
-                      <p className="text-sm text-gray-600"><strong>Timeline:</strong> {offer.timeline}</p>
-                      <p className="text-sm text-gray-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
+                      <p className="text-sm text-gray-700 mt-2"><strong>Scope:</strong> {offer.scope}</p>
+                      <p className="text-sm text-gray-700"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
+                      <p className="text-sm text-gray-700"><strong>Timeline:</strong> {offer.timeline}</p>
+                      <p className="text-sm text-gray-700"><strong>Deliverables:</strong> {offer.deliverables}</p>
                     </div>
                     <div className="flex gap-2 ml-4">
                       <button
-                        onClick={() => handleAccept(offer.id)}
+                        onClick={() => handleAccept(offer.id, offer.request_id)}
                         disabled={actionLoading === offer.id}
                         className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
                       >
@@ -261,7 +290,7 @@ export default function StudentDashboard() {
           ) : (
             <div className="space-y-4">
               {requests.map((req) => (
-                <div key={req.id} className="border border-gray-300 rounded-xl p-4 hover:shadow transition">
+                <div key={req.id} className="border border-gray-400 rounded-xl p-4 hover:shadow transition">
                   <div className="flex justify-between items-start">
                     <div>
                       <h3 className="font-bold text-lg text-gray-800">{req.title}</h3>
@@ -269,7 +298,7 @@ export default function StudentDashboard() {
                       <div className="flex gap-3 mt-2 text-xs text-gray-600">
                         <span>Category: {req.category.replace('_', ' ')}</span>
                         {req.budget_range && <span>Budget: {req.budget_range}</span>}
-                        <span>Status: <span className="capitalize">{req.status}</span></span>
+                        <span>Status: <span className="capitalize font-medium">{req.status}</span></span>
                       </div>
                     </div>
                     <div className="text-xs text-gray-500">
@@ -283,7 +312,6 @@ export default function StudentDashboard() {
         </div>
       </main>
 
-      {/* Modal for new request */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6">
@@ -293,7 +321,7 @@ export default function StudentDashboard() {
                 type="text"
                 name="title"
                 placeholder="Title (e.g., Help with final year project)"
-                className="w-full p-2 border border-gray-300 rounded mb-3 text-gray-800 placeholder-gray-500"
+                className="w-full p-2 border border-gray-400 rounded mb-3 text-gray-800 placeholder-gray-500"
                 value={formData.title}
                 onChange={handleChange}
                 required
@@ -301,7 +329,7 @@ export default function StudentDashboard() {
               <textarea
                 name="description"
                 placeholder="Describe what you need help with..."
-                className="w-full p-2 border border-gray-300 rounded mb-3 text-gray-800 placeholder-gray-500"
+                className="w-full p-2 border border-gray-400 rounded mb-3 text-gray-800 placeholder-gray-500"
                 rows={3}
                 value={formData.description}
                 onChange={handleChange}
@@ -309,7 +337,7 @@ export default function StudentDashboard() {
               />
               <select
                 name="category"
-                className="w-full p-2 border border-gray-300 rounded mb-3 text-gray-800"
+                className="w-full p-2 border border-gray-400 rounded mb-3 text-gray-800"
                 value={formData.category}
                 onChange={handleChange}
               >
@@ -321,7 +349,7 @@ export default function StudentDashboard() {
                 type="text"
                 name="budget_range"
                 placeholder="Budget range (optional, e.g., ₦5,000 - ₦10,000)"
-                className="w-full p-2 border border-gray-300 rounded mb-4 text-gray-800 placeholder-gray-500"
+                className="w-full p-2 border border-gray-400 rounded mb-4 text-gray-800 placeholder-gray-500"
                 value={formData.budget_range}
                 onChange={handleChange}
               />
