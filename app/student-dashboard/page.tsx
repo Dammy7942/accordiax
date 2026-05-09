@@ -3,6 +3,11 @@ import { supabase } from '@/lib/supabaseClient';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import RoleSwitcher from '@/components/RoleSwitcher';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/Input';
 
 interface Request {
   id: string;
@@ -67,7 +72,6 @@ export default function StudentDashboard() {
       setUserRole(profile.role);
       setUserName(profile?.full_name || user.email || null);
 
-      // Fetch student's requests (all statuses)
       const { data: reqData, error: reqError } = await supabase
         .from('requests')
         .select('*')
@@ -77,7 +81,6 @@ export default function StudentDashboard() {
       if (reqError) console.error(reqError);
       else setRequests(reqData || []);
 
-      // Fetch pending agreements for these requests (status = 'pending')
       if (reqData && reqData.length > 0) {
         const requestIds = reqData.map(r => r.id);
         const { data: agreeData, error: agreeError } = await supabase
@@ -128,7 +131,6 @@ export default function StudentDashboard() {
     } else {
       setShowModal(false);
       setFormData({ title: '', description: '', category: 'project_supervision', budget_range: '' });
-      // Refresh requests and pending offers
       const { data: newReqs } = await supabase
         .from('requests')
         .select('*')
@@ -152,7 +154,6 @@ export default function StudentDashboard() {
 
   const handleAccept = async (agreementId: string, requestId: string) => {
     setActionLoading(agreementId);
-    // Update agreement status to accepted
     const { error: agreeError } = await supabase
       .from('agreements')
       .update({ status: 'accepted' })
@@ -162,15 +163,12 @@ export default function StudentDashboard() {
       setActionLoading(null);
       return;
     }
-    // Update request status to matched (so it no longer appears as open)
     const { error: reqError } = await supabase
       .from('requests')
       .update({ status: 'matched' })
       .eq('id', requestId);
-    if (reqError) {
-      console.error('Error updating request status:', reqError);
-    }
-    // Refresh data
+    if (reqError) console.error('Error updating request status:', reqError);
+
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data: newReqs } = await supabase
@@ -219,89 +217,73 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-blue-900">Accordiax</h1>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">Accordiax</h1>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-700">{userName || userEmail}</span>
+            <span className="text-sm text-slate-600">{userName || userEmail}</span>
             {userRole && <RoleSwitcher currentRole={userRole} />}
-            <button onClick={handleLogout} className="text-red-600 text-sm hover:underline">Logout</button>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
-        {/* Pending Offers Section */}
-        <div className="bg-white rounded-2xl shadow p-6 mb-8">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-4">Pending Offers</h2>
+      <main className="container mx-auto px-4 py-8 space-y-8">
+        <Card>
+          <h2 className="text-2xl font-bold text-slate-800 mb-4">Pending Offers</h2>
           {pendingOffers.length === 0 ? (
-            <p className="text-gray-600">No pending offers.</p>
+            <p className="text-slate-500">No pending offers.</p>
           ) : (
             <div className="space-y-4">
               {pendingOffers.map((offer) => (
-                <div key={offer.id} className="border border-gray-400 rounded-xl p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-600">From consultant:</p>
-                      <p className="font-semibold text-gray-800">{offer.consultant_name}</p>
-                      <p className="text-sm text-gray-700 mt-2"><strong>Scope:</strong> {offer.scope}</p>
-                      <p className="text-sm text-gray-700"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
-                      <p className="text-sm text-gray-700"><strong>Timeline:</strong> {offer.timeline}</p>
-                      <p className="text-sm text-gray-700"><strong>Deliverables:</strong> {offer.deliverables}</p>
+                <div key={offer.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
+                  <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-slate-500">From consultant</p>
+                      <p className="font-semibold text-slate-800">{offer.consultant_name}</p>
+                      <p className="text-sm text-slate-600 mt-2"><strong>Scope:</strong> {offer.scope}</p>
+                      <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
+                      <p className="text-sm text-slate-600"><strong>Timeline:</strong> {offer.timeline}</p>
+                      <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
                     </div>
-                    <div className="flex gap-2 ml-4">
-                      <button
-                        onClick={() => handleAccept(offer.id, offer.request_id)}
-                        disabled={actionLoading === offer.id}
-                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
-                      >
+                    <div className="flex gap-2 items-start">
+                      <Button variant="primary" size="sm" onClick={() => handleAccept(offer.id, offer.request_id)} loading={actionLoading === offer.id}>
                         Accept
-                      </button>
-                      <button
-                        onClick={() => handleReject(offer.id)}
-                        disabled={actionLoading === offer.id}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
-                      >
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleReject(offer.id)} loading={actionLoading === offer.id}>
                         Reject
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
 
-        {/* My Requests Section */}
-        <div className="bg-white rounded-2xl shadow p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-semibold text-gray-800">My Requests</h2>
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl"
-            >
-              + New Request
-            </button>
+        <Card>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold text-slate-800">My Requests</h2>
+            <Button variant="primary" onClick={() => setShowModal(true)}>+ New Request</Button>
           </div>
-
           {requests.length === 0 ? (
-            <p className="text-gray-600">You haven't posted any requests yet.</p>
+            <p className="text-slate-500">You haven't posted any requests yet.</p>
           ) : (
             <div className="space-y-4">
               {requests.map((req) => (
-                <div key={req.id} className="border border-gray-400 rounded-xl p-4 hover:shadow transition">
+                <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
                   <div className="flex justify-between items-start">
                     <div>
-                      <h3 className="font-bold text-lg text-gray-800">{req.title}</h3>
-                      <p className="text-gray-700 text-sm mt-1">{req.description}</p>
-                      <div className="flex gap-3 mt-2 text-xs text-gray-600">
-                        <span>Category: {req.category.replace('_', ' ')}</span>
-                        {req.budget_range && <span>Budget: {req.budget_range}</span>}
-                        <span>Status: <span className="capitalize font-medium">{req.status}</span></span>
+                      <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
+                      <p className="text-slate-600 text-sm mt-1">{req.description}</p>
+                      <div className="flex flex-wrap gap-3 mt-2 text-xs">
+                        <span className="text-slate-500">Category: {req.category.replace('_', ' ')}</span>
+                        {req.budget_range && <span className="text-slate-500">Budget: {req.budget_range}</span>}
+                        <Badge status={req.status as any} />
                       </div>
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-slate-400">
                       {new Date(req.created_at).toLocaleDateString()}
                     </div>
                   </div>
@@ -309,63 +291,50 @@ export default function StudentDashboard() {
               ))}
             </div>
           )}
-        </div>
+        </Card>
       </main>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-4 text-gray-800">Create a new request</h3>
-            <form onSubmit={handleSubmit}>
-              <input
-                type="text"
-                name="title"
-                placeholder="Title (e.g., Help with final year project)"
-                className="w-full p-2 border border-gray-400 rounded mb-3 text-gray-800 placeholder-gray-500"
-                value={formData.title}
-                onChange={handleChange}
-                required
-              />
-              <textarea
-                name="description"
-                placeholder="Describe what you need help with..."
-                className="w-full p-2 border border-gray-400 rounded mb-3 text-gray-800 placeholder-gray-500"
-                rows={3}
-                value={formData.description}
-                onChange={handleChange}
-                required
-              />
-              <select
-                name="category"
-                className="w-full p-2 border border-gray-400 rounded mb-3 text-gray-800"
-                value={formData.category}
-                onChange={handleChange}
-              >
-                <option value="project_supervision">Project Supervision</option>
-                <option value="admission_guidance">Admission Guidance</option>
-                <option value="assignment_support">Assignment Support</option>
-              </select>
-              <input
-                type="text"
-                name="budget_range"
-                placeholder="Budget range (optional, e.g., ₦5,000 - ₦10,000)"
-                className="w-full p-2 border border-gray-400 rounded mb-4 text-gray-800 placeholder-gray-500"
-                value={formData.budget_range}
-                onChange={handleChange}
-              />
-              {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
-              <div className="flex gap-3">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white p-2 rounded transition">
-                  Cancel
-                </button>
-                <button type="submit" disabled={submitting} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded disabled:opacity-50">
-                  {submitting ? 'Posting...' : 'Post Request'}
-                </button>
-              </div>
-            </form>
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Create a new request">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input
+            name="title"
+            placeholder="Title (e.g., Help with final year project)"
+            value={formData.title}
+            onChange={handleChange}
+            required
+          />
+          <textarea
+            name="description"
+            placeholder="Describe what you need help with..."
+            className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+            rows={3}
+            value={formData.description}
+            onChange={handleChange}
+            required
+          />
+          <select
+            name="category"
+            className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+            value={formData.category}
+            onChange={handleChange}
+          >
+            <option value="project_supervision">Project Supervision</option>
+            <option value="admission_guidance">Admission Guidance</option>
+            <option value="assignment_support">Assignment Support</option>
+          </select>
+          <Input
+            name="budget_range"
+            placeholder="Budget range (optional, e.g., ₦5,000 - ₦10,000)"
+            value={formData.budget_range}
+            onChange={handleChange}
+          />
+          {error && <p className="text-red-600 text-sm">{error}</p>}
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button type="submit" loading={submitting}>Post Request</Button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { Button } from '@/components/ui/Button';
 
 interface RoleSwitcherProps {
   currentRole: 'student' | 'consultant';
@@ -35,18 +36,18 @@ export default function RoleSwitcher({ currentRole }: RoleSwitcherProps) {
       return;
     }
 
-    // Redirect to the other dashboard
     router.push(newRole === 'student' ? '/student-dashboard' : '/consultant-dashboard');
     setLoading(false);
   };
 
   return (
-    <button
+    <Button
+      variant="outline"
+      size="sm"
       onClick={switchRole}
-      disabled={loading}
-      className="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1 rounded transition disabled:opacity-50"
+      loading={loading}
     >
-      {loading ? 'Switching...' : `Switch to ${currentRole === 'student' ? 'Consultant' : 'Student'}`}
-    </button>
+      Switch to {currentRole === 'student' ? 'Consultant' : 'Student'}
+    </Button>
   );
 }

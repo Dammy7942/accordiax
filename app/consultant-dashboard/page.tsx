@@ -3,6 +3,11 @@ import { supabase } from '@/lib/supabaseClient';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import RoleSwitcher from '@/components/RoleSwitcher';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/Input';
 
 interface Request {
   id: string;
@@ -68,7 +73,7 @@ export default function ConsultantDashboard() {
       setUserRole(profile.role);
       setUserName(profile?.full_name || user.email || null);
 
-      // Fetch open requests (only those with status = 'open')
+      // Fetch open requests (status = 'open')
       const { data: reqData, error: reqError } = await supabase
         .from('requests')
         .select('*')
@@ -78,7 +83,7 @@ export default function ConsultantDashboard() {
       if (reqError) console.error(reqError);
       else setRequests(reqData || []);
 
-      // Fetch consultant's own agreements
+      // Fetch consultant's offers
       const { data: offerData, error: offerError } = await supabase
         .from('agreements')
         .select('*')
@@ -162,16 +167,6 @@ export default function ConsultantDashboard() {
     setSubmitting(false);
   };
 
-  const getStatusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      accepted: 'bg-green-100 text-green-800',
-      rejected: 'bg-red-100 text-red-800',
-    };
-    const color = colors[status] || 'bg-gray-100 text-gray-800';
-    return <span className={`px-2 py-1 rounded-full text-xs font-medium ${color}`}>{status}</span>;
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -181,133 +176,119 @@ export default function ConsultantDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-purple-900">Accordiax</h1>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-700 to-indigo-700 bg-clip-text text-transparent">Accordiax</h1>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-700">{userName || userEmail}</span>
+            <span className="text-sm text-slate-600">{userName || userEmail}</span>
             {userRole && <RoleSwitcher currentRole={userRole} />}
-            <button onClick={handleLogout} className="text-red-600 text-sm hover:underline">Logout</button>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Open Requests Section */}
-        <div className="bg-white rounded-2xl shadow p-6 mb-8">
-          <h2 className="text-2xl font-semibold mb-6 text-gray-800">Open Requests from Students</h2>
+        <Card>
+          <h2 className="text-2xl font-bold text-slate-800 mb-4">Open Requests from Students</h2>
           {requests.length === 0 ? (
-            <p className="text-gray-600">No open requests at the moment.</p>
+            <p className="text-slate-500">No open requests at the moment.</p>
           ) : (
             <div className="space-y-4">
               {requests.map((req) => (
-                <div key={req.id} className="border border-gray-400 rounded-xl p-4 hover:shadow transition">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h3 className="font-bold text-lg text-gray-800">{req.title}</h3>
-                      <p className="text-gray-700 text-sm mt-1">{req.description}</p>
-                      <div className="flex gap-3 mt-2 text-xs text-gray-600">
+                <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
+                  <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div>
+                      <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
+                      <p className="text-slate-600 text-sm mt-1">{req.description}</p>
+                      <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
                         <span>Category: {req.category.replace('_', ' ')}</span>
                         {req.budget_range && <span>Budget: {req.budget_range}</span>}
                       </div>
                     </div>
-                    <button
-                      onClick={() => openOfferModal(req)}
-                      className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg text-sm"
-                    >
-                      Make offer
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* My Offers Section */}
-        <div className="bg-white rounded-2xl shadow p-6">
-          <h2 className="text-2xl font-semibold mb-6 text-gray-800">My Offers</h2>
-          {myOffers.length === 0 ? (
-            <p className="text-gray-600">You haven't made any offers yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {myOffers.map((offer) => (
-                <div key={offer.id} className="border border-gray-400 rounded-xl p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-gray-800">Offer on request #{offer.request_id.slice(0,8)}</h3>
-                        {getStatusBadge(offer.status)}
-                      </div>
-                      <p className="text-sm text-gray-700"><strong>Scope:</strong> {offer.scope}</p>
-                      <p className="text-sm text-gray-700"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
-                      <p className="text-sm text-gray-700"><strong>Timeline:</strong> {offer.timeline}</p>
-                      <p className="text-sm text-gray-700"><strong>Deliverables:</strong> {offer.deliverables}</p>
-                      <p className="text-xs text-gray-500 mt-2">{new Date(offer.created_at).toLocaleDateString()}</p>
+                    <div>
+                      <Button variant="secondary" size="sm" onClick={() => openOfferModal(req)}>
+                        Make offer
+                      </Button>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
+
+        {/* My Offers Section */}
+        <Card>
+          <h2 className="text-2xl font-bold text-slate-800 mb-4">My Offers</h2>
+          {myOffers.length === 0 ? (
+            <p className="text-slate-500">You haven't made any offers yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {myOffers.map((offer) => (
+                <div key={offer.id} className="border border-slate-200 rounded-xl p-4">
+                  <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-800">Offer on request #{offer.request_id.slice(0,8)}</span>
+                      <Badge status={offer.status as any} />
+                    </div>
+                    <span className="text-xs text-slate-400">{new Date(offer.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <p className="text-sm text-slate-600 mt-1"><strong>Scope:</strong> {offer.scope}</p>
+                  <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
+                  <p className="text-sm text-slate-600"><strong>Timeline:</strong> {offer.timeline}</p>
+                  <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       </main>
 
-      {showModal && selectedRequest && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-4 text-gray-800">Make an offer for: {selectedRequest.title}</h3>
-            <form onSubmit={submitOffer}>
-              <textarea
-                name="scope"
-                placeholder="What exactly will you do? (scope of work)"
-                className="w-full p-2 border border-gray-400 rounded mb-3 text-gray-800 placeholder-gray-500"
-                rows={2}
-                value={offerForm.scope}
-                onChange={handleOfferChange}
-                required
-              />
-              <input
-                type="number"
-                name="price"
-                placeholder="Price (in NGN, e.g., 5000)"
-                className="w-full p-2 border border-gray-400 rounded mb-3 text-gray-800 placeholder-gray-500"
-                value={offerForm.price}
-                onChange={handleOfferChange}
-                required
-              />
-              <input
-                type="text"
-                name="timeline"
-                placeholder="Timeline (e.g., 5 days)"
-                className="w-full p-2 border border-gray-400 rounded mb-3 text-gray-800 placeholder-gray-500"
-                value={offerForm.timeline}
-                onChange={handleOfferChange}
-                required
-              />
-              <textarea
-                name="deliverables"
-                placeholder="What will be delivered? (e.g., 5000 word report, references, etc.)"
-                className="w-full p-2 border border-gray-400 rounded mb-4 text-gray-800 placeholder-gray-500"
-                rows={2}
-                value={offerForm.deliverables}
-                onChange={handleOfferChange}
-                required
-              />
-              {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
-              <div className="flex gap-3">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white p-2 rounded transition">
-                  Cancel
-                </button>
-                <button type="submit" disabled={submitting} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white p-2 rounded disabled:opacity-50">
-                  {submitting ? 'Sending...' : 'Send Offer'}
-                </button>
-              </div>
-            </form>
+      {/* Modal for making an offer */}
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={`Make an offer for: ${selectedRequest?.title || ''}`}>
+        <form onSubmit={submitOffer} className="space-y-4">
+          <textarea
+            name="scope"
+            placeholder="What exactly will you do? (scope of work)"
+            className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition"
+            rows={2}
+            value={offerForm.scope}
+            onChange={handleOfferChange}
+            required
+          />
+          <Input
+            type="number"
+            name="price"
+            placeholder="Price (in NGN, e.g., 5000)"
+            value={offerForm.price}
+            onChange={handleOfferChange}
+            required
+          />
+          <Input
+            name="timeline"
+            placeholder="Timeline (e.g., 5 days)"
+            value={offerForm.timeline}
+            onChange={handleOfferChange}
+            required
+          />
+          <textarea
+            name="deliverables"
+            placeholder="What will be delivered? (e.g., 5000 word report, references, etc.)"
+            className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 transition"
+            rows={2}
+            value={offerForm.deliverables}
+            onChange={handleOfferChange}
+            required
+          />
+          {error && <p className="text-red-600 text-sm">{error}</p>}
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button type="submit" variant="secondary" loading={submitting}>Send Offer</Button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
     </div>
   );
 }
