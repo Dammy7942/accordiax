@@ -16,12 +16,14 @@ interface Request {
   category: string;
   budget_range: string;
   student_id: string;
+  student_name?: string;
   created_at: string;
 }
 
 interface Agreement {
   id: string;
   request_id: string;
+  request_title?: string;
   consultant_name: string;
   scope: string;
   price: number;
@@ -31,13 +33,20 @@ interface Agreement {
   created_at: string;
 }
 
+type TabType = 'overview' | 'pending' | 'accepted' | 'paid' | 'rejected' | 'completed';
+
 export default function ConsultantDashboard() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'student' | 'consultant' | null>(null);
-  const [requests, setRequests] = useState<Request[]>([]);
-  const [myOffers, setMyOffers] = useState<Agreement[]>([]);
+  const [openRequests, setOpenRequests] = useState<Request[]>([]);
+  const [pendingOffers, setPendingOffers] = useState<Agreement[]>([]);
+  const [acceptedOffers, setAcceptedOffers] = useState<Agreement[]>([]);
+  const [paidOffers, setPaidOffers] = useState<Agreement[]>([]);
+  const [rejectedOffers, setRejectedOffers] = useState<Agreement[]>([]);
+  const [completedOffers, setCompletedOffers] = useState<Agreement[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
@@ -73,25 +82,61 @@ export default function ConsultantDashboard() {
       setUserRole(profile.role);
       setUserName(profile?.full_name || user.email || null);
 
-      // Fetch open requests (status = 'open')
-      const { data: reqData, error: reqError } = await supabase
+      // 1. Open requests with student name
+      const { data: openRaw, error: openError } = await supabase
         .from('requests')
-        .select('*')
+        .select(`
+          id,
+          title,
+          description,
+          category,
+          budget_range,
+          student_id,
+          created_at,
+          profiles!requests_student_id_fkey ( full_name )
+        `)
         .eq('status', 'open')
         .order('created_at', { ascending: false });
 
-      if (reqError) console.error(reqError);
-      else setRequests(reqData || []);
+      if (openError) console.error(openError);
+      else {
+        const mapped = (openRaw || []).map((r: any) => ({
+          ...r,
+          student_name: r.profiles?.full_name || 'Unknown Student',
+        }));
+        setOpenRequests(mapped);
+      }
 
-      // Fetch consultant's offers
-      const { data: offerData, error: offerError } = await supabase
+      // 2. Consultant's offers with request title
+      const { data: allOffers, error: offerError } = await supabase
         .from('agreements')
-        .select('*')
+        .select(`
+          id,
+          request_id,
+          consultant_name,
+          scope,
+          price,
+          timeline,
+          deliverables,
+          status,
+          created_at,
+          requests!agreements_request_id_fkey ( title )
+        `)
         .eq('consultant_id', user.id)
         .order('created_at', { ascending: false });
 
       if (offerError) console.error(offerError);
-      else setMyOffers(offerData || []);
+      else {
+        const enriched = (allOffers || []).map((o: any) => ({
+          ...o,
+          request_title: o.requests?.title || 'Untitled Request',
+        }));
+        setPendingOffers(enriched.filter((o: any) => o.status === 'pending'));
+        setAcceptedOffers(enriched.filter((o: any) => o.status === 'accepted'));
+        setPaidOffers(enriched.filter((o: any) => o.status === 'paid'));
+        setRejectedOffers(enriched.filter((o: any) => o.status === 'rejected'));
+        setCompletedOffers(enriched.filter((o: any) => o.status === 'completed'));
+      }
 
       setLoading(false);
     };
@@ -156,15 +201,41 @@ export default function ConsultantDashboard() {
     } else {
       setShowModal(false);
       alert('Offer sent to student!');
-      // Refresh my offers
+      // Refresh offers
       const { data: newOffers } = await supabase
         .from('agreements')
-        .select('*')
+        .select(`
+          id,
+          request_id,
+          consultant_name,
+          scope,
+          price,
+          timeline,
+          deliverables,
+          status,
+          created_at,
+          requests!agreements_request_id_fkey ( title )
+        `)
         .eq('consultant_id', user.id)
         .order('created_at', { ascending: false });
-      if (newOffers) setMyOffers(newOffers);
+      if (newOffers) {
+        const enriched = newOffers.map((o: any) => ({
+          ...o,
+          request_title: o.requests?.title || 'Untitled Request',
+        }));
+        setPendingOffers(enriched.filter((o: any) => o.status === 'pending'));
+        setAcceptedOffers(enriched.filter((o: any) => o.status === 'accepted'));
+        setPaidOffers(enriched.filter((o: any) => o.status === 'paid'));
+        setRejectedOffers(enriched.filter((o: any) => o.status === 'rejected'));
+        setCompletedOffers(enriched.filter((o: any) => o.status === 'completed'));
+      }
     }
     setSubmitting(false);
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
   if (loading) {
@@ -174,6 +245,37 @@ export default function ConsultantDashboard() {
       </div>
     );
   }
+
+  const statCards = [
+    { label: 'Pending Offers', value: pendingOffers.length, color: '#FCD34D', tab: 'pending' },
+    { label: 'Accepted Offers', value: acceptedOffers.length, color: '#5EEAD4', tab: 'accepted' },
+    { label: 'Paid Offers', value: paidOffers.length, color: '#A78BFA', tab: 'paid' },
+    { label: 'Rejected Offers', value: rejectedOffers.length, color: '#F87171', tab: 'rejected' },
+    { label: 'Completed', value: completedOffers.length, color: '#34D399', tab: 'completed' },
+  ];
+
+  const getCountForTab = (tab: string): number => {
+    if (tab === 'pending') return pendingOffers.length;
+    if (tab === 'accepted') return acceptedOffers.length;
+    if (tab === 'paid') return paidOffers.length;
+    if (tab === 'rejected') return rejectedOffers.length;
+    if (tab === 'completed') return completedOffers.length;
+    return 0;
+  };
+
+  const renderOfferCard = (offer: Agreement) => (
+    <div key={offer.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
+      <div className="flex flex-col gap-2">
+        <div><Badge status={offer.status as any} /></div>
+        <p className="text-sm text-slate-600"><strong>Request:</strong> {offer.request_title}</p>
+        <p className="text-sm text-slate-600"><strong>Scope:</strong> {offer.scope}</p>
+        <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
+        <p className="text-sm text-slate-600"><strong>Timeline:</strong> {offer.timeline}</p>
+        <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
+        <p className="text-xs text-slate-400">Offer made: {formatDate(offer.created_at)}</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -189,61 +291,111 @@ export default function ConsultantDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8 space-y-8">
-        {/* Open Requests Section */}
-        <Card>
-          <h2 className="text-2xl font-bold text-slate-800 mb-4">Open Requests from Students</h2>
-          {requests.length === 0 ? (
-            <p className="text-slate-500">No open requests at the moment.</p>
-          ) : (
-            <div className="space-y-4">
-              {requests.map((req) => (
-                <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
-                  <div className="flex flex-col md:flex-row justify-between gap-4">
-                    <div>
-                      <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
-                      <p className="text-slate-600 text-sm mt-1">{req.description}</p>
-                      <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
-                        <span>Category: {req.category.replace('_', ' ')}</span>
-                        {req.budget_range && <span>Budget: {req.budget_range}</span>}
+        {/* Tab Bar */}
+        <div className="flex flex-wrap border-b border-slate-200 gap-2">
+          {['overview', 'pending', 'accepted', 'paid', 'rejected', 'completed'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab as TabType)}
+              className={`px-4 py-2 font-medium text-sm transition-colors ${
+                activeTab === tab
+                  ? 'text-purple-600 border-b-2 border-purple-600'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {tab === 'overview' ? 'Overview' : `${tab.charAt(0).toUpperCase() + tab.slice(1)} (${getCountForTab(tab)})`}
+            </button>
+          ))}
+        </div>
+
+        {/* Overview Tab */}
+        {activeTab === 'overview' && (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            {statCards.map((card) => (
+              <button
+                key={card.label}
+                onClick={() => setActiveTab(card.tab as TabType)}
+                className="flex flex-col gap-3 p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all"
+                style={{ borderColor: '#CBD5E1', textAlign: 'left' }}
+              >
+                <span className="text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
+                <span className="text-sm text-slate-600">{card.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Open Requests Section – Always visible under overview? The original had it separate. Let's keep it always visible for easy access */}
+        {activeTab === 'overview' && (
+          <Card>
+            <h2 className="text-2xl font-bold text-slate-800 mb-4">Open Requests from Students</h2>
+            {openRequests.length === 0 ? (
+              <p className="text-slate-500">No open requests at the moment.</p>
+            ) : (
+              <div className="space-y-4">
+                {openRequests.map((req) => (
+                  <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
+                    <div className="flex flex-col md:flex-row justify-between gap-4">
+                      <div className="flex-1">
+                        <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
+                        <p className="text-slate-600 text-sm mt-1">{req.description}</p>
+                        <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
+                          <span>Category: {req.category.replace('_', ' ')}</span>
+                          {req.budget_range && <span>Budget: {req.budget_range}</span>}
+                        </div>
+                        <div className="flex flex-wrap gap-4 mt-2 text-xs text-slate-400">
+                          <span>Posted by: {req.student_name}</span>
+                          <span>Posted on: {formatDate(req.created_at)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center">
+                        <Button variant="secondary" size="sm" onClick={() => openOfferModal(req)}>
+                          Make offer
+                        </Button>
                       </div>
                     </div>
-                    <div>
-                      <Button variant="secondary" size="sm" onClick={() => openOfferModal(req)}>
-                        Make offer
-                      </Button>
-                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
 
-        {/* My Offers Section */}
-        <Card>
-          <h2 className="text-2xl font-bold text-slate-800 mb-4">My Offers</h2>
-          {myOffers.length === 0 ? (
-            <p className="text-slate-500">You haven't made any offers yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {myOffers.map((offer) => (
-                <div key={offer.id} className="border border-slate-200 rounded-xl p-4">
-                  <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-slate-800">Offer on request #{offer.request_id.slice(0,8)}</span>
-                      <Badge status={offer.status as any} />
-                    </div>
-                    <span className="text-xs text-slate-400">{new Date(offer.created_at).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-sm text-slate-600 mt-1"><strong>Scope:</strong> {offer.scope}</p>
-                  <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
-                  <p className="text-sm text-slate-600"><strong>Timeline:</strong> {offer.timeline}</p>
-                  <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+        {/* Detail Tabs Content */}
+        {activeTab === 'pending' && (
+          <Card>
+            <h2 className="text-2xl font-bold text-slate-800 mb-4">Pending Offers (Awaiting Student Decision)</h2>
+            {pendingOffers.length === 0 ? <p className="text-slate-500">No pending offers.</p> : <div className="space-y-4">{pendingOffers.map(renderOfferCard)}</div>}
+          </Card>
+        )}
+
+        {activeTab === 'accepted' && (
+          <Card>
+            <h2 className="text-2xl font-bold text-slate-800 mb-4">Accepted Offers (Awaiting Payment)</h2>
+            {acceptedOffers.length === 0 ? <p className="text-slate-500">No accepted offers yet.</p> : <div className="space-y-4">{acceptedOffers.map(renderOfferCard)}</div>}
+          </Card>
+        )}
+
+        {activeTab === 'paid' && (
+          <Card>
+            <h2 className="text-2xl font-bold text-slate-800 mb-4">Paid Offers (Ready to Work)</h2>
+            {paidOffers.length === 0 ? <p className="text-slate-500">No paid offers yet.</p> : <div className="space-y-4">{paidOffers.map(renderOfferCard)}</div>}
+          </Card>
+        )}
+
+        {activeTab === 'rejected' && (
+          <Card>
+            <h2 className="text-2xl font-bold text-slate-800 mb-4">Rejected Offers</h2>
+            {rejectedOffers.length === 0 ? <p className="text-slate-500">No rejected offers.</p> : <div className="space-y-4">{rejectedOffers.map(renderOfferCard)}</div>}
+          </Card>
+        )}
+
+        {activeTab === 'completed' && (
+          <Card>
+            <h2 className="text-2xl font-bold text-slate-800 mb-4">Completed Offers</h2>
+            {completedOffers.length === 0 ? <p className="text-slate-500">No completed offers yet.</p> : <div className="space-y-4">{completedOffers.map(renderOfferCard)}</div>}
+          </Card>
+        )}
       </main>
 
       {/* Modal for making an offer */}
