@@ -370,21 +370,23 @@ export default function ConsultantDashboard() {
       </header>
 
       {/* Desktop tabs (hidden on mobile) */}
-      <div className="hidden sm:block overflow-x-auto pb-2">
-        <div className="flex gap-1 sm:gap-2 border-b border-slate-200 min-w-max px-4">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as TabType)}
-              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap ${
-                activeTab === tab.key
-                  ? 'text-purple-600 border-b-2 border-purple-600'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      <div className="hidden sm:block border-b border-slate-200">
+        <div className="container mx-auto px-4 overflow-x-auto">
+          <div className="flex gap-1 sm:gap-2 min-w-max">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as TabType)}
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap ${
+                  activeTab === tab.key
+                    ? 'text-purple-600 border-b-2 border-purple-600'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -431,7 +433,7 @@ export default function ConsultantDashboard() {
         {activeTab === 'overview' && (
           <>
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 p-4 sm:p-6">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Welcome back, {userName || userEmail}.</h2>
+              <h3 className="text-sm sm:text-lg font-bold text-slate-800 break-words">Welcome back, {userName || userEmail}.</h3>
               <p className="text-slate-600 text-sm sm:text-base mt-1">Browse open requests, manage offers, and track agreements.</p>
               <p className="text-slate-500 text-xs sm:text-sm mt-2">Consultant Dashboard – Find students, submit offers, get paid, and build your reputation.</p>
             </div>
