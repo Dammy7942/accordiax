@@ -37,7 +37,7 @@ declare global {
   }
 }
 
-type TabType = 'overview' | 'pending' | 'accepted' | 'paid' | 'rejected' | 'completed' | 'myrequests';
+type TabType = 'overview' | 'pending' | 'accepted' | 'paid' | 'delivered' | 'rejected' | 'completed' | 'myrequests';
 
 export default function StudentDashboard() {
   const router = useRouter();
@@ -50,6 +50,7 @@ export default function StudentDashboard() {
   const [paidAgreements, setPaidAgreements] = useState<Agreement[]>([]);
   const [rejectedAgreements, setRejectedAgreements] = useState<Agreement[]>([]);
   const [completedAgreements, setCompletedAgreements] = useState<Agreement[]>([]);
+  const [deliveredAgreements, setDeliveredAgreements] = useState<Agreement[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -107,6 +108,7 @@ export default function StudentDashboard() {
         setPaidAgreements(await refresh('paid'));
         setRejectedAgreements(await refresh('rejected'));
         setCompletedAgreements(await refresh('completed'));
+        setDeliveredAgreements(await refresh('delivered'));
       }
 
       setLoading(false);
@@ -166,12 +168,14 @@ export default function StudentDashboard() {
         setPaidAgreements(await refresh('paid'));
         setRejectedAgreements(await refresh('rejected'));
         setCompletedAgreements(await refresh('completed'));
+        setDeliveredAgreements(await refresh('delivered'));
       } else {
         setPendingOffers([]);
         setAcceptedAgreements([]);
         setPaidAgreements([]);
         setRejectedAgreements([]);
         setCompletedAgreements([]);
+        setDeliveredAgreements([]);
       }
     }
     setSubmitting(false);
@@ -213,12 +217,14 @@ export default function StudentDashboard() {
         setPaidAgreements(await refresh('paid'));
         setRejectedAgreements(await refresh('rejected'));
         setCompletedAgreements(await refresh('completed'));
+        setDeliveredAgreements(await refresh('delivered'));
       } else {
         setPendingOffers([]);
         setAcceptedAgreements([]);
         setPaidAgreements([]);
         setRejectedAgreements([]);
         setCompletedAgreements([]);
+        setDeliveredAgreements([]);
       }
     }
     alert('Offer accepted! Request is now matched.');
@@ -254,10 +260,29 @@ export default function StudentDashboard() {
           setPaidAgreements(await refresh('paid'));
           setRejectedAgreements(await refresh('rejected'));
           setCompletedAgreements(await refresh('completed'));
+          setDeliveredAgreements(await refresh('delivered'));
         }
       }
     }
     setActionLoading(null);
+  };
+
+  const handleApprove = async (agreementId: string) => {
+    const { error } = await supabase
+      .from('agreements')
+      .update({ status: 'completed' })
+      .eq('id', agreementId);
+    if (error) alert('Error: ' + error.message);
+    else { alert('Work approved! Agreement completed.'); window.location.reload(); }
+  };
+
+  const handleDispute = async (agreementId: string) => {
+    const { error } = await supabase
+      .from('agreements')
+      .update({ status: 'disputed' })
+      .eq('id', agreementId);
+    if (error) alert('Error: ' + error.message);
+    else { alert('Dispute raised. Consultant will be notified.'); window.location.reload(); }
   };
 
   const handlePay = async (agreement: Agreement) => {
@@ -349,6 +374,7 @@ export default function StudentDashboard() {
     { label: 'Pending Offers', value: pendingOffers.length, color: '#FCD34D', tab: 'pending' },
     { label: 'Ready for Payment', value: acceptedAgreements.length, color: '#5EEAD4', tab: 'accepted' },
     { label: 'Paid Agreements', value: paidAgreements.length, color: '#A78BFA', tab: 'paid' },
+    { label: 'Delivered', value: deliveredAgreements.length, color: '#60A5FA', tab: 'delivered' },
     { label: 'Rejected Offers', value: rejectedAgreements.length, color: '#F87171', tab: 'rejected' },
     { label: 'Completed', value: completedAgreements.length, color: '#34D399', tab: 'completed' },
   ];
@@ -358,6 +384,7 @@ export default function StudentDashboard() {
     if (tab === 'pending') return pendingOffers.length;
     if (tab === 'accepted') return acceptedAgreements.length;
     if (tab === 'paid') return paidAgreements.length;
+    if (tab === 'delivered') return deliveredAgreements.length;
     if (tab === 'rejected') return rejectedAgreements.length;
     if (tab === 'completed') return completedAgreements.length;
     return 0;
@@ -500,6 +527,12 @@ export default function StudentDashboard() {
             Paid Agreements ({getCountForTab('paid')})
           </button>
           <button
+            onClick={() => setActiveTab('delivered')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'delivered' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Delivered ({getCountForTab('delivered')})
+          </button>
+          <button
             onClick={() => setActiveTab('rejected')}
             className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'rejected' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
@@ -583,6 +616,41 @@ export default function StudentDashboard() {
               <p className="text-slate-500 text-sm">Payments completed. The consultant will now deliver the work. Track progress here.</p>
             </div>
             {paidAgreements.length === 0 ? <p className="text-slate-500">No paid agreements yet.</p> : <div className="space-y-4">{paidAgreements.map((ag) => renderAgreementCard(ag, false))}</div>}
+          </Card>
+        )}
+
+        {/* Delivered Tab */}
+        {activeTab === 'delivered' && (
+          <Card>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Delivered Work</h2>
+              <p className="text-slate-500 text-sm">The consultant has marked this work as delivered. Review it and approve or raise a dispute.</p>
+            </div>
+            {deliveredAgreements.length === 0 ? (
+              <p className="text-slate-500">No delivered agreements yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {deliveredAgreements.map((ag) => (
+                  <div key={ag.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
+                    <div className="flex flex-col md:flex-row justify-between gap-4">
+                      <div className="flex-1">
+                        <Badge status="delivered" />
+                        <p className="text-sm text-slate-500 mt-2">Consultant: {ag.consultant_name}</p>
+                        <p className="text-sm text-slate-600 mt-1"><strong>Scope:</strong> {ag.scope}</p>
+                        <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{ag.price.toLocaleString()}</p>
+                        <p className="text-sm text-slate-600"><strong>Timeline:</strong> {ag.timeline}</p>
+                        <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {ag.deliverables}</p>
+                        <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(ag.created_at)}</p>
+                      </div>
+                      <div className="flex gap-2 items-start pt-1">
+                        <Button variant="primary" size="sm" onClick={() => handleApprove(ag.id)}>Approve</Button>
+                        <Button variant="outline" size="sm" onClick={() => handleDispute(ag.id)}>Dispute</Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         )}
 

@@ -33,7 +33,7 @@ interface Agreement {
   created_at: string;
 }
 
-type TabType = 'overview' | 'open' | 'pending' | 'accepted' | 'paid' | 'rejected' | 'completed';
+type TabType = 'overview' | 'open' | 'pending' | 'accepted' | 'paid' | 'rejected' | 'completed' | 'disputed';
 
 export default function ConsultantDashboard() {
   const router = useRouter();
@@ -46,6 +46,7 @@ export default function ConsultantDashboard() {
   const [paidOffers, setPaidOffers] = useState<Agreement[]>([]);
   const [rejectedOffers, setRejectedOffers] = useState<Agreement[]>([]);
   const [completedOffers, setCompletedOffers] = useState<Agreement[]>([]);
+  const [disputedOffers, setDisputedOffers] = useState<Agreement[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -136,6 +137,7 @@ export default function ConsultantDashboard() {
         setPaidOffers(enriched.filter((o: any) => o.status === 'paid'));
         setRejectedOffers(enriched.filter((o: any) => o.status === 'rejected'));
         setCompletedOffers(enriched.filter((o: any) => o.status === 'completed'));
+        setDisputedOffers(enriched.filter((o: any) => o.status === 'disputed'));
       }
 
       setLoading(false);
@@ -228,9 +230,40 @@ export default function ConsultantDashboard() {
         setPaidOffers(enriched.filter((o: any) => o.status === 'paid'));
         setRejectedOffers(enriched.filter((o: any) => o.status === 'rejected'));
         setCompletedOffers(enriched.filter((o: any) => o.status === 'completed'));
+        setDisputedOffers(enriched.filter((o: any) => o.status === 'disputed'));
       }
     }
     setSubmitting(false);
+  };
+
+  const handleAcceptDispute = async (agreementId: string) => {
+    const { error } = await supabase
+      .from('agreements')
+      .update({ status: 'rejected' })
+      .eq('id', agreementId);
+    if (error) alert('Error: ' + error.message);
+    else { alert('Dispute accepted. Agreement rejected.'); window.location.reload(); }
+  };
+
+  const handleAppeal = async (agreementId: string) => {
+    const { error } = await supabase
+      .from('agreements')
+      .update({ status: 'appealed' })
+      .eq('id', agreementId);
+    if (error) alert('Error: ' + error.message);
+    else { alert('Appeal submitted. Admin will review.'); window.location.reload(); }
+  };
+
+  const handleMarkDelivered = async (agreementId: string) => {
+    const { error } = await supabase
+      .from('agreements')
+      .update({ status: 'delivered' })
+      .eq('id', agreementId);
+    if (error) alert('Error: ' + error.message);
+    else {
+      alert('Work marked as delivered. Student will review.');
+      window.location.reload();
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -252,6 +285,7 @@ export default function ConsultantDashboard() {
     { label: 'Accepted Offers', value: acceptedOffers.length, color: '#5EEAD4', tab: 'accepted' },
     { label: 'Paid Offers', value: paidOffers.length, color: '#A78BFA', tab: 'paid' },
     { label: 'Rejected Offers', value: rejectedOffers.length, color: '#F87171', tab: 'rejected' },
+    { label: 'Disputed', value: disputedOffers.length, color: '#F97316', tab: 'disputed' },
     { label: 'Completed', value: completedOffers.length, color: '#34D399', tab: 'completed' },
   ];
 
@@ -261,6 +295,7 @@ export default function ConsultantDashboard() {
     if (tab === 'accepted') return acceptedOffers.length;
     if (tab === 'paid') return paidOffers.length;
     if (tab === 'rejected') return rejectedOffers.length;
+    if (tab === 'disputed') return disputedOffers.length;
     if (tab === 'completed') return completedOffers.length;
     return 0;
   };
@@ -275,6 +310,13 @@ export default function ConsultantDashboard() {
         <p className="text-sm text-slate-600"><strong>Timeline:</strong> {offer.timeline}</p>
         <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
         <p className="text-xs text-slate-400">Offer made: {formatDate(offer.created_at)}</p>
+        {offer.status === 'paid' && (
+          <div className="pt-2">
+            <Button variant="primary" size="sm" onClick={() => handleMarkDelivered(offer.id)}>
+              Mark as Delivered
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -352,6 +394,12 @@ export default function ConsultantDashboard() {
             className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'rejected' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
             Rejected Offers ({getCountForTab('rejected')})
+          </button>
+          <button
+            onClick={() => setActiveTab('disputed')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'disputed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Disputed ({getCountForTab('disputed')})
           </button>
           <button
             onClick={() => setActiveTab('completed')}
@@ -441,6 +489,39 @@ export default function ConsultantDashboard() {
               <p className="text-slate-500 text-sm">Offers that were declined by students.</p>
             </div>
             {rejectedOffers.length === 0 ? <p className="text-slate-500">No rejected offers.</p> : <div className="space-y-4">{rejectedOffers.map(renderOfferCard)}</div>}
+          </Card>
+        )}
+
+        {/* Disputed Tab */}
+        {activeTab === 'disputed' && (
+          <Card>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Disputed Agreements</h2>
+              <p className="text-slate-500 text-sm">A student has raised a dispute. You can accept the dispute or submit an appeal for admin review.</p>
+            </div>
+            {disputedOffers.length === 0 ? (
+              <p className="text-slate-500">No disputed agreements.</p>
+            ) : (
+              <div className="space-y-4">
+                {disputedOffers.map((offer) => (
+                  <div key={offer.id} className="border border-red-200 rounded-xl p-4 hover:shadow transition">
+                    <div className="flex flex-col gap-2">
+                      <div><Badge status="disputed" /></div>
+                      <p className="text-sm text-slate-600"><strong>Request:</strong> {offer.request_title}</p>
+                      <p className="text-sm text-slate-600"><strong>Scope:</strong> {offer.scope}</p>
+                      <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
+                      <p className="text-sm text-slate-600"><strong>Timeline:</strong> {offer.timeline}</p>
+                      <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
+                      <p className="text-xs text-slate-400">Offer made: {formatDate(offer.created_at)}</p>
+                      <div className="flex gap-2 pt-2">
+                        <Button variant="outline" size="sm" onClick={() => handleAcceptDispute(offer.id)}>Accept Dispute</Button>
+                        <Button variant="primary" size="sm" onClick={() => handleAppeal(offer.id)}>Appeal</Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         )}
 
