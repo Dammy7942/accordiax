@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface Request {
   id: string;
@@ -56,6 +57,7 @@ export default function StudentDashboard() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [payingAgreement, setPayingAgreement] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -391,9 +393,9 @@ export default function StudentDashboard() {
   };
 
   const renderAgreementCard = (agreement: Agreement, showPayButton: boolean = false) => (
-    <div key={agreement.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex-1">
+    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
+      <div className="flex flex-col gap-3">
+        <div>
           <p className="text-sm text-slate-500">Consultant: {agreement.consultant_name}</p>
           <p className="text-sm text-slate-600 mt-2"><strong>Scope:</strong> {agreement.scope}</p>
           <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{agreement.price.toLocaleString()}</p>
@@ -402,8 +404,8 @@ export default function StudentDashboard() {
           <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(agreement.created_at)}</p>
         </div>
         {showPayButton && (
-          <div className="flex items-center">
-            <Button variant="primary" onClick={() => handlePay(agreement)} loading={payingAgreement === agreement.id} className="whitespace-nowrap">
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={() => handlePay(agreement)} loading={payingAgreement === agreement.id} className="whitespace-nowrap text-sm px-3 py-1.5">
               Pay Now
             </Button>
           </div>
@@ -413,9 +415,9 @@ export default function StudentDashboard() {
   );
 
   const renderPendingOffer = (offer: Agreement) => (
-    <div key={offer.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex-1">
+    <div key={offer.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
+      <div className="flex flex-col gap-3">
+        <div>
           <p className="text-sm text-slate-500">From consultant: {offer.consultant_name}</p>
           <p className="text-sm text-slate-600 mt-2"><strong>Scope:</strong> {offer.scope}</p>
           <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
@@ -423,7 +425,7 @@ export default function StudentDashboard() {
           <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
           <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(offer.created_at)}</p>
         </div>
-        <div className="flex gap-2 items-start">
+        <div className="flex gap-2 justify-end">
           <Button variant="primary" size="sm" onClick={() => handleAccept(offer.id, offer.request_id)} loading={actionLoading === offer.id}>
             Accept
           </Button>
@@ -436,7 +438,7 @@ export default function StudentDashboard() {
   );
 
   const renderRejectedCard = (agreement: Agreement) => (
-    <div key={agreement.id} className="border border-slate-200 rounded-xl p-4">
+    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 break-words">
       <div className="flex flex-col gap-2">
         <div><Badge status="rejected" /></div>
         <p className="text-sm text-slate-500">Consultant: {agreement.consultant_name}</p>
@@ -450,7 +452,7 @@ export default function StudentDashboard() {
   );
 
   const renderCompletedCard = (agreement: Agreement) => (
-    <div key={agreement.id} className="border border-slate-200 rounded-xl p-4">
+    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 break-words">
       <div className="flex flex-col gap-2">
         <div><Badge status="completed" /></div>
         <p className="text-sm text-slate-500">Consultant: {agreement.consultant_name}</p>
@@ -464,106 +466,134 @@ export default function StudentDashboard() {
   );
 
   const renderMyRequest = (req: Request) => (
-    <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
-      <div className="flex justify-between items-start">
-        <div>
-          <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
-          <p className="text-slate-600 text-sm mt-1">{req.description}</p>
-          <div className="flex flex-wrap gap-3 mt-2 text-xs">
-            <span className="text-slate-500">Category: {req.category.replace('_', ' ')}</span>
-            {req.budget_range && <span className="text-slate-500">Budget: {req.budget_range}</span>}
-            <Badge status={req.status as any} />
-          </div>
-          <p className="text-xs text-slate-400 mt-2">Requested on: {formatDate(req.created_at)}</p>
+    <div key={req.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
+      <div>
+        <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
+        <p className="text-slate-600 text-sm mt-1">{req.description}</p>
+        <div className="flex flex-wrap gap-2 mt-2 text-xs">
+          <span className="text-slate-500">Category: {req.category.replace('_', ' ')}</span>
+          {req.budget_range && <span className="text-slate-500">Budget: {req.budget_range}</span>}
+          <Badge status={req.status as any} />
         </div>
+        <p className="text-xs text-slate-400 mt-2">Requested on: {formatDate(req.created_at)}</p>
       </div>
     </div>
   );
 
+  const tabs = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'myrequests', label: `My Requests (${getCountForTab('myrequests')})` },
+    { key: 'pending', label: `Pending (${getCountForTab('pending')})` },
+    { key: 'accepted', label: `Ready to Pay (${getCountForTab('accepted')})` },
+    { key: 'paid', label: `Paid (${getCountForTab('paid')})` },
+    { key: 'delivered', label: `Delivered (${getCountForTab('delivered')})` },
+    { key: 'rejected', label: `Rejected (${getCountForTab('rejected')})` },
+    { key: 'completed', label: `Completed (${getCountForTab('completed')})` },
+  ];
+
+  const selectTab = (tabKey: TabType) => {
+    setActiveTab(tabKey);
+    setDrawerOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">Accordiax</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-600">{userName || userEmail}</span>
+      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-20">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">Accordiax</h1>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="hidden sm:inline text-xs sm:text-sm text-slate-600 truncate max-w-[150px]">{userName || userEmail}</span>
             {userRole && <RoleSwitcher currentRole={userRole} />}
-            <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
+            <span className="hidden sm:inline-flex">
+              <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
+            </span>
+            {/* Hamburger button – visible only on mobile */}
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="block sm:hidden p-2 rounded-md text-slate-600 hover:bg-slate-100 focus:outline-none"
+            >
+              <Bars3Icon className="h-6 w-6" />
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 space-y-8">
-        {/* Tab Bar */}
-        <div className="flex flex-wrap border-b border-slate-200 gap-2">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveTab('myrequests')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'myrequests' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            My Requests ({getCountForTab('myrequests')})
-          </button>
-          <button
-            onClick={() => setActiveTab('pending')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'pending' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Pending Offers ({getCountForTab('pending')})
-          </button>
-          <button
-            onClick={() => setActiveTab('accepted')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'accepted' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Ready for Payment ({getCountForTab('accepted')})
-          </button>
-          <button
-            onClick={() => setActiveTab('paid')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'paid' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Paid Agreements ({getCountForTab('paid')})
-          </button>
-          <button
-            onClick={() => setActiveTab('delivered')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'delivered' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Delivered ({getCountForTab('delivered')})
-          </button>
-          <button
-            onClick={() => setActiveTab('rejected')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'rejected' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Rejected Offers ({getCountForTab('rejected')})
-          </button>
-          <button
-            onClick={() => setActiveTab('completed')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'completed' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Completed ({getCountForTab('completed')})
-          </button>
+      {/* Desktop tabs (hidden on mobile) */}
+      <div className="hidden sm:block overflow-x-auto pb-2">
+        <div className="flex gap-1 sm:gap-2 border-b border-slate-200 min-w-max px-4">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as TabType)}
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap ${
+                activeTab === tab.key
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* Overview Tab Content */}
+      {/* Mobile drawer */}
+      {drawerOpen && (
+        <>
+          {/* Overlay */}
+          <div
+            className="fixed inset-0 bg-black/50 z-40 sm:hidden"
+            onClick={() => setDrawerOpen(false)}
+          />
+          {/* Bottom half-screen modal */}
+          <div className="fixed bottom-0 left-0 right-0 h-1/2 bg-white shadow-2xl z-50 sm:hidden flex flex-col rounded-t-2xl">
+            <div className="flex justify-between items-center px-5 py-4 border-b border-slate-200">
+              <h2 className="font-semibold text-slate-800">Navigate</h2>
+              <button onClick={() => setDrawerOpen(false)} className="p-1 rounded-md text-slate-500 hover:bg-slate-100">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-2">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => selectTab(tab.key as TabType)}
+                  className={`w-full text-left px-5 py-3 text-sm font-medium transition-colors ${
+                    activeTab === tab.key
+                      ? 'bg-blue-50 text-blue-600 border-l-4 border-blue-600'
+                      : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-slate-200 px-5 py-3">
+              <button
+                onClick={handleLogout}
+                className="w-full text-left py-2 text-sm font-medium text-red-600 hover:text-red-700"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      <main className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
+        {/* Overview Tab */}
         {activeTab === 'overview' && (
           <>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 p-6">
-              <h2 className="text-2xl font-bold text-slate-800">Welcome to your Dashboard, {userName || userEmail}.</h2>
-              <p className="text-slate-600 mt-1">Track your requests, offers, agreements, and payments all in one place.</p>
-              <p className="text-slate-500 text-sm mt-2">Student Dashboard – Post help requests, review consultant offers, make secure payments, and monitor your academic support journey.</p>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Welcome back, {userName || userEmail}.</h2>
+              <p className="text-slate-600 text-sm sm:text-base mt-1">Track your requests, offers, agreements, and payments.</p>
+              <p className="text-slate-500 text-xs sm:text-sm mt-2">Student Dashboard – Post help requests, review offers, pay securely, and monitor your academic support journey.</p>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {statCards.map((card) => (
-                <button
-                  key={card.label}
-                  onClick={() => setActiveTab(card.tab as TabType)}
-                  className="flex flex-col gap-3 p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all"
-                  style={{ borderColor: '#CBD5E1', textAlign: 'left' }}
-                >
-                  <span className="text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
-                  <span className="text-sm text-slate-600">{card.label}</span>
+                <button key={card.label} onClick={() => selectTab(card.tab as TabType)} className="flex flex-col gap-2 p-4 sm:p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all text-left">
+                  <span className="text-2xl sm:text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
+                  <span className="text-xs sm:text-sm text-slate-600">{card.label}</span>
                 </button>
               ))}
             </div>
@@ -574,15 +604,11 @@ export default function StudentDashboard() {
         {activeTab === 'myrequests' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">My Requests</h2>
-              <p className="text-slate-500 text-sm">Create, manage, and track your service requests. Consultants will make offers based on your needs.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">My Requests</h2>
+              <p className="text-slate-500 text-sm">Create, manage, and track your service requests.</p>
               <Button variant="primary" className="mt-3" onClick={() => setShowModal(true)}>+ New Request</Button>
             </div>
-            {requests.length === 0 ? (
-              <p className="text-slate-500">You haven't posted any requests yet.</p>
-            ) : (
-              <div className="space-y-4">{requests.map(renderMyRequest)}</div>
-            )}
+            {requests.length === 0 ? <p className="text-slate-500">No requests yet.</p> : <div className="space-y-4">{requests.map(renderMyRequest)}</div>}
           </Card>
         )}
 
@@ -590,8 +616,8 @@ export default function StudentDashboard() {
         {activeTab === 'pending' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Pending Offers</h2>
-              <p className="text-slate-500 text-sm">Offers received from consultants. Review the terms, then accept or reject.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Pending Offers</h2>
+              <p className="text-slate-500 text-sm">Offers from consultants. Review and accept or reject.</p>
             </div>
             {pendingOffers.length === 0 ? <p className="text-slate-500">No pending offers.</p> : <div className="space-y-4">{pendingOffers.map(renderPendingOffer)}</div>}
           </Card>
@@ -601,8 +627,8 @@ export default function StudentDashboard() {
         {activeTab === 'accepted' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Ready for Payment</h2>
-              <p className="text-slate-500 text-sm">Agreements you have accepted. Secure payment via Paystack to start the work.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Ready for Payment</h2>
+              <p className="text-slate-500 text-sm">Accepted agreements waiting for payment via Paystack.</p>
             </div>
             {acceptedAgreements.length === 0 ? <p className="text-slate-500">No accepted agreements awaiting payment.</p> : <div className="space-y-4">{acceptedAgreements.map((ag) => renderAgreementCard(ag, true))}</div>}
           </Card>
@@ -612,8 +638,8 @@ export default function StudentDashboard() {
         {activeTab === 'paid' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Paid Agreements</h2>
-              <p className="text-slate-500 text-sm">Payments completed. The consultant will now deliver the work. Track progress here.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Paid Agreements</h2>
+              <p className="text-slate-500 text-sm">Payments completed. Consultant will deliver.</p>
             </div>
             {paidAgreements.length === 0 ? <p className="text-slate-500">No paid agreements yet.</p> : <div className="space-y-4">{paidAgreements.map((ag) => renderAgreementCard(ag, false))}</div>}
           </Card>
@@ -623,17 +649,17 @@ export default function StudentDashboard() {
         {activeTab === 'delivered' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Delivered Work</h2>
-              <p className="text-slate-500 text-sm">The consultant has marked this work as delivered. Review it and approve or raise a dispute.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Delivered Work</h2>
+              <p className="text-slate-500 text-sm">The consultant has marked this work as delivered. Review and approve or raise a dispute.</p>
             </div>
             {deliveredAgreements.length === 0 ? (
               <p className="text-slate-500">No delivered agreements yet.</p>
             ) : (
               <div className="space-y-4">
                 {deliveredAgreements.map((ag) => (
-                  <div key={ag.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
-                    <div className="flex flex-col md:flex-row justify-between gap-4">
-                      <div className="flex-1">
+                  <div key={ag.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
+                    <div className="flex flex-col gap-3">
+                      <div>
                         <Badge status="delivered" />
                         <p className="text-sm text-slate-500 mt-2">Consultant: {ag.consultant_name}</p>
                         <p className="text-sm text-slate-600 mt-1"><strong>Scope:</strong> {ag.scope}</p>
@@ -642,7 +668,7 @@ export default function StudentDashboard() {
                         <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {ag.deliverables}</p>
                         <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(ag.created_at)}</p>
                       </div>
-                      <div className="flex gap-2 items-start pt-1">
+                      <div className="flex gap-2 justify-end">
                         <Button variant="primary" size="sm" onClick={() => handleApprove(ag.id)}>Approve</Button>
                         <Button variant="outline" size="sm" onClick={() => handleDispute(ag.id)}>Dispute</Button>
                       </div>
@@ -658,8 +684,8 @@ export default function StudentDashboard() {
         {activeTab === 'rejected' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Rejected Offers</h2>
-              <p className="text-slate-500 text-sm">Offers you declined. If you change your mind, you may contact the consultant directly.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Rejected Offers</h2>
+              <p className="text-slate-500 text-sm">Offers you declined.</p>
             </div>
             {rejectedAgreements.length === 0 ? <p className="text-slate-500">No rejected offers.</p> : <div className="space-y-4">{rejectedAgreements.map(renderRejectedCard)}</div>}
           </Card>
@@ -669,8 +695,8 @@ export default function StudentDashboard() {
         {activeTab === 'completed' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Completed Agreements</h2>
-              <p className="text-slate-500 text-sm">Work delivered and confirmed. Thank you for using Accordiax. Please leave a rating.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Completed Agreements</h2>
+              <p className="text-slate-500 text-sm">Work delivered and confirmed.</p>
             </div>
             {completedAgreements.length === 0 ? <p className="text-slate-500">No completed agreements yet.</p> : <div className="space-y-4">{completedAgreements.map(renderCompletedCard)}</div>}
           </Card>
@@ -679,16 +705,16 @@ export default function StudentDashboard() {
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Create a new request">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input name="title" placeholder="Title (e.g., Help with final year project)" value={formData.title} onChange={handleChange} required />
-          <textarea name="description" placeholder="Describe what you need help with..." className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500" rows={3} value={formData.description} onChange={handleChange} required />
+          <Input name="title" placeholder="Title" value={formData.title} onChange={handleChange} required />
+          <textarea name="description" placeholder="Describe your needs..." className="w-full px-4 py-2 border border-slate-300 rounded-xl" rows={3} value={formData.description} onChange={handleChange} required />
           <select name="category" className="w-full px-4 py-2 border border-slate-300 rounded-xl" value={formData.category} onChange={handleChange}>
             <option value="project_supervision">Project Supervision</option>
             <option value="admission_guidance">Admission Guidance</option>
             <option value="assignment_support">Assignment Support</option>
           </select>
-          <Input name="budget_range" placeholder="Budget range (optional, e.g., ₦5,000 - ₦10,000)" value={formData.budget_range} onChange={handleChange} />
+          <Input name="budget_range" placeholder="Budget range (optional)" value={formData.budget_range} onChange={handleChange} />
           {error && <p className="text-red-600 text-sm">{error}</p>}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3">
             <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button type="submit" loading={submitting}>Post Request</Button>
           </div>

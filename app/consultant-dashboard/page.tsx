@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface Request {
   id: string;
@@ -51,6 +52,7 @@ export default function ConsultantDashboard() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [offerForm, setOfferForm] = useState({
     scope: '',
     price: '',
@@ -203,7 +205,7 @@ export default function ConsultantDashboard() {
     } else {
       setShowModal(false);
       alert('Offer sent to student!');
-      // Refresh all offers
+      // Refresh offers
       const { data: newOffers } = await supabase
         .from('agreements')
         .select(`
@@ -236,34 +238,22 @@ export default function ConsultantDashboard() {
     setSubmitting(false);
   };
 
+  const handleMarkDelivered = async (agreementId: string) => {
+    const { error } = await supabase.from('agreements').update({ status: 'delivered' }).eq('id', agreementId);
+    if (error) alert('Error: ' + error.message);
+    else { alert('Work marked as delivered. Student will review.'); window.location.reload(); }
+  };
+
   const handleAcceptDispute = async (agreementId: string) => {
-    const { error } = await supabase
-      .from('agreements')
-      .update({ status: 'rejected' })
-      .eq('id', agreementId);
+    const { error } = await supabase.from('agreements').update({ status: 'rejected' }).eq('id', agreementId);
     if (error) alert('Error: ' + error.message);
     else { alert('Dispute accepted. Agreement rejected.'); window.location.reload(); }
   };
 
   const handleAppeal = async (agreementId: string) => {
-    const { error } = await supabase
-      .from('agreements')
-      .update({ status: 'appealed' })
-      .eq('id', agreementId);
+    const { error } = await supabase.from('agreements').update({ status: 'appealed' }).eq('id', agreementId);
     if (error) alert('Error: ' + error.message);
     else { alert('Appeal submitted. Admin will review.'); window.location.reload(); }
-  };
-
-  const handleMarkDelivered = async (agreementId: string) => {
-    const { error } = await supabase
-      .from('agreements')
-      .update({ status: 'delivered' })
-      .eq('id', agreementId);
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Work marked as delivered. Student will review.');
-      window.location.reload();
-    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -301,7 +291,7 @@ export default function ConsultantDashboard() {
   };
 
   const renderOfferCard = (offer: Agreement) => (
-    <div key={offer.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
+    <div key={offer.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
       <div className="flex flex-col gap-2">
         <div><Badge status={offer.status as any} /></div>
         <p className="text-sm text-slate-600"><strong>Request:</strong> {offer.request_title}</p>
@@ -312,9 +302,7 @@ export default function ConsultantDashboard() {
         <p className="text-xs text-slate-400">Offer made: {formatDate(offer.created_at)}</p>
         {offer.status === 'paid' && (
           <div className="pt-2">
-            <Button variant="primary" size="sm" onClick={() => handleMarkDelivered(offer.id)}>
-              Mark as Delivered
-            </Button>
+            <Button variant="primary" size="sm" onClick={() => handleMarkDelivered(offer.id)}>Mark as Delivered</Button>
           </div>
         )}
       </div>
@@ -322,111 +310,136 @@ export default function ConsultantDashboard() {
   );
 
   const renderOpenRequest = (req: Request) => (
-    <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex-1">
+    <div key={req.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
+      <div className="flex flex-col gap-3">
+        <div>
           <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
           <p className="text-slate-600 text-sm mt-1">{req.description}</p>
-          <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
+          <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-500">
             <span>Category: {req.category.replace('_', ' ')}</span>
             {req.budget_range && <span>Budget: {req.budget_range}</span>}
           </div>
-          <div className="flex flex-wrap gap-4 mt-2 text-xs text-slate-400">
+          <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-400">
             <span>Posted by: {req.student_name}</span>
             <span>Posted on: {formatDate(req.created_at)}</span>
           </div>
         </div>
-        <div className="flex items-center">
+        <div className="flex justify-end">
           <Button variant="secondary" size="sm" onClick={() => openOfferModal(req)}>Make offer</Button>
         </div>
       </div>
     </div>
   );
 
+  const tabs = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'open', label: `Open Requests (${getCountForTab('open')})` },
+    { key: 'pending', label: `Pending Offers (${getCountForTab('pending')})` },
+    { key: 'accepted', label: `Accepted (${getCountForTab('accepted')})` },
+    { key: 'paid', label: `Paid (${getCountForTab('paid')})` },
+    { key: 'rejected', label: `Rejected (${getCountForTab('rejected')})` },
+    { key: 'disputed', label: `Disputed (${getCountForTab('disputed')})` },
+    { key: 'completed', label: `Completed (${getCountForTab('completed')})` },
+  ];
+
+  const selectTab = (tabKey: TabType) => {
+    setActiveTab(tabKey);
+    setDrawerOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-700 to-indigo-700 bg-clip-text text-transparent">Accordiax</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-600">{userName || userEmail}</span>
+      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-20">
+        <div className="container mx-auto px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-700 to-indigo-700 bg-clip-text text-transparent">Accordiax</h1>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="hidden sm:inline text-xs sm:text-sm text-slate-600 truncate max-w-[150px]">{userName || userEmail}</span>
             {userRole && <RoleSwitcher currentRole={userRole} />}
-            <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
+            <span className="hidden sm:inline-flex">
+              <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
+            </span>
+            {/* Hamburger button – visible only on mobile */}
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="block sm:hidden p-2 rounded-md text-slate-600 hover:bg-slate-100 focus:outline-none"
+            >
+              <Bars3Icon className="h-6 w-6" />
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 space-y-8">
-        {/* Tab Bar */}
-        <div className="flex flex-wrap border-b border-slate-200 gap-2">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveTab('open')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'open' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Open Requests ({getCountForTab('open')})
-          </button>
-          <button
-            onClick={() => setActiveTab('pending')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'pending' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Pending Offers ({getCountForTab('pending')})
-          </button>
-          <button
-            onClick={() => setActiveTab('accepted')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'accepted' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Accepted Offers ({getCountForTab('accepted')})
-          </button>
-          <button
-            onClick={() => setActiveTab('paid')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'paid' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Paid Offers ({getCountForTab('paid')})
-          </button>
-          <button
-            onClick={() => setActiveTab('rejected')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'rejected' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Rejected Offers ({getCountForTab('rejected')})
-          </button>
-          <button
-            onClick={() => setActiveTab('disputed')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'disputed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Disputed ({getCountForTab('disputed')})
-          </button>
-          <button
-            onClick={() => setActiveTab('completed')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Completed ({getCountForTab('completed')})
-          </button>
+      {/* Desktop tabs (hidden on mobile) */}
+      <div className="hidden sm:block overflow-x-auto pb-2">
+        <div className="flex gap-1 sm:gap-2 border-b border-slate-200 min-w-max px-4">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as TabType)}
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap ${
+                activeTab === tab.key
+                  ? 'text-purple-600 border-b-2 border-purple-600'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
+      </div>
 
+      {/* Mobile drawer */}
+      {drawerOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40 sm:hidden" onClick={() => setDrawerOpen(false)} />
+          <div className="fixed bottom-0 left-0 right-0 h-1/2 bg-white shadow-2xl z-50 sm:hidden flex flex-col rounded-t-2xl">
+            <div className="flex justify-between items-center px-5 py-4 border-b border-slate-200">
+              <h2 className="font-semibold text-slate-800">Navigate</h2>
+              <button onClick={() => setDrawerOpen(false)} className="p-1 rounded-md text-slate-500 hover:bg-slate-100">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-2">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => selectTab(tab.key as TabType)}
+                  className={`w-full text-left px-5 py-3 text-sm font-medium transition-colors ${
+                    activeTab === tab.key
+                      ? 'bg-purple-50 text-purple-600 border-l-4 border-purple-600'
+                      : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-slate-200 px-5 py-3">
+              <button
+                onClick={handleLogout}
+                className="w-full text-left py-2 text-sm font-medium text-red-600 hover:text-red-700"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      <main className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 p-6">
-              <h2 className="text-2xl font-bold text-slate-800">Welcome to your Dashboard, {userName || userEmail}.</h2>
-              <p className="text-slate-600 mt-1">Browse open requests, manage your offers, and track agreements.</p>
-              <p className="text-slate-500 text-sm mt-2">Consultant Dashboard – Find students who need your expertise, submit offers, get paid, and build your reputation.</p>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 p-4 sm:p-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Welcome back, {userName || userEmail}.</h2>
+              <p className="text-slate-600 text-sm sm:text-base mt-1">Browse open requests, manage offers, and track agreements.</p>
+              <p className="text-slate-500 text-xs sm:text-sm mt-2">Consultant Dashboard – Find students, submit offers, get paid, and build your reputation.</p>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {statCards.map((card) => (
-                <button
-                  key={card.label}
-                  onClick={() => setActiveTab(card.tab as TabType)}
-                  className="flex flex-col gap-3 p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all"
-                  style={{ borderColor: '#CBD5E1', textAlign: 'left' }}
-                >
-                  <span className="text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
-                  <span className="text-sm text-slate-600">{card.label}</span>
+                <button key={card.label} onClick={() => selectTab(card.tab as TabType)} className="flex flex-col gap-2 p-4 sm:p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all text-left">
+                  <span className="text-2xl sm:text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
+                  <span className="text-xs sm:text-sm text-slate-600">{card.label}</span>
                 </button>
               ))}
             </div>
@@ -437,14 +450,10 @@ export default function ConsultantDashboard() {
         {activeTab === 'open' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Open Requests from Students</h2>
-              <p className="text-slate-500 text-sm">Browse requests posted by students. Make a professional offer to help them.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Open Requests from Students</h2>
+              <p className="text-slate-500 text-sm">Browse and make offers on student requests.</p>
             </div>
-            {openRequests.length === 0 ? (
-              <p className="text-slate-500">No open requests at the moment.</p>
-            ) : (
-              <div className="space-y-4">{openRequests.map(renderOpenRequest)}</div>
-            )}
+            {openRequests.length === 0 ? <p className="text-slate-500">No open requests.</p> : <div className="space-y-4">{openRequests.map(renderOpenRequest)}</div>}
           </Card>
         )}
 
@@ -452,8 +461,8 @@ export default function ConsultantDashboard() {
         {activeTab === 'pending' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Pending Offers</h2>
-              <p className="text-slate-500 text-sm">Offers you have made that are waiting for student acceptance.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Pending Offers</h2>
+              <p className="text-slate-500 text-sm">Offers waiting for student decision.</p>
             </div>
             {pendingOffers.length === 0 ? <p className="text-slate-500">No pending offers.</p> : <div className="space-y-4">{pendingOffers.map(renderOfferCard)}</div>}
           </Card>
@@ -463,10 +472,10 @@ export default function ConsultantDashboard() {
         {activeTab === 'accepted' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Accepted Offers</h2>
-              <p className="text-slate-500 text-sm">Offers accepted by students. Awaiting payment completion.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Accepted Offers</h2>
+              <p className="text-slate-500 text-sm">Offers accepted by students. Awaiting payment.</p>
             </div>
-            {acceptedOffers.length === 0 ? <p className="text-slate-500">No accepted offers yet.</p> : <div className="space-y-4">{acceptedOffers.map(renderOfferCard)}</div>}
+            {acceptedOffers.length === 0 ? <p className="text-slate-500">No accepted offers.</p> : <div className="space-y-4">{acceptedOffers.map(renderOfferCard)}</div>}
           </Card>
         )}
 
@@ -474,10 +483,10 @@ export default function ConsultantDashboard() {
         {activeTab === 'paid' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Paid Offers</h2>
-              <p className="text-slate-500 text-sm">Payments received. You can now start the work.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Paid Offers</h2>
+              <p className="text-slate-500 text-sm">Payments received. You can start working.</p>
             </div>
-            {paidOffers.length === 0 ? <p className="text-slate-500">No paid offers yet.</p> : <div className="space-y-4">{paidOffers.map(renderOfferCard)}</div>}
+            {paidOffers.length === 0 ? <p className="text-slate-500">No paid offers.</p> : <div className="space-y-4">{paidOffers.map(renderOfferCard)}</div>}
           </Card>
         )}
 
@@ -485,8 +494,8 @@ export default function ConsultantDashboard() {
         {activeTab === 'rejected' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Rejected Offers</h2>
-              <p className="text-slate-500 text-sm">Offers that were declined by students.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Rejected Offers</h2>
+              <p className="text-slate-500 text-sm">Offers declined by students.</p>
             </div>
             {rejectedOffers.length === 0 ? <p className="text-slate-500">No rejected offers.</p> : <div className="space-y-4">{rejectedOffers.map(renderOfferCard)}</div>}
           </Card>
@@ -496,15 +505,15 @@ export default function ConsultantDashboard() {
         {activeTab === 'disputed' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Disputed Agreements</h2>
-              <p className="text-slate-500 text-sm">A student has raised a dispute. You can accept the dispute or submit an appeal for admin review.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Disputed Agreements</h2>
+              <p className="text-slate-500 text-sm">A student has raised a dispute. Accept it or submit an appeal for admin review.</p>
             </div>
             {disputedOffers.length === 0 ? (
               <p className="text-slate-500">No disputed agreements.</p>
             ) : (
               <div className="space-y-4">
                 {disputedOffers.map((offer) => (
-                  <div key={offer.id} className="border border-red-200 rounded-xl p-4 hover:shadow transition">
+                  <div key={offer.id} className="border border-red-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
                     <div className="flex flex-col gap-2">
                       <div><Badge status="disputed" /></div>
                       <p className="text-sm text-slate-600"><strong>Request:</strong> {offer.request_title}</p>
@@ -529,22 +538,22 @@ export default function ConsultantDashboard() {
         {activeTab === 'completed' && (
           <Card>
             <div className="mb-4">
-              <h2 className="text-2xl font-bold text-slate-800">Completed Agreements</h2>
-              <p className="text-slate-500 text-sm">Work delivered and confirmed. Thank you for your service.</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Completed Agreements</h2>
+              <p className="text-slate-500 text-sm">Work delivered and approved.</p>
             </div>
-            {completedOffers.length === 0 ? <p className="text-slate-500">No completed agreements yet.</p> : <div className="space-y-4">{completedOffers.map(renderOfferCard)}</div>}
+            {completedOffers.length === 0 ? <p className="text-slate-500">No completed agreements.</p> : <div className="space-y-4">{completedOffers.map(renderOfferCard)}</div>}
           </Card>
         )}
       </main>
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={`Make an offer for: ${selectedRequest?.title || ''}`}>
         <form onSubmit={submitOffer} className="space-y-4">
-          <textarea name="scope" placeholder="What exactly will you do? (scope of work)" className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500" rows={2} value={offerForm.scope} onChange={handleOfferChange} required />
-          <Input type="number" name="price" placeholder="Price (in NGN, e.g., 5000)" value={offerForm.price} onChange={handleOfferChange} required />
+          <textarea name="scope" placeholder="What will you do? (scope)" className="w-full px-4 py-2 border border-slate-300 rounded-xl" rows={2} value={offerForm.scope} onChange={handleOfferChange} required />
+          <Input type="number" name="price" placeholder="Price (₦)" value={offerForm.price} onChange={handleOfferChange} required />
           <Input name="timeline" placeholder="Timeline (e.g., 5 days)" value={offerForm.timeline} onChange={handleOfferChange} required />
-          <textarea name="deliverables" placeholder="What will be delivered? (e.g., 5000 word report, references, etc.)" className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500" rows={2} value={offerForm.deliverables} onChange={handleOfferChange} required />
+          <textarea name="deliverables" placeholder="Deliverables" className="w-full px-4 py-2 border border-slate-300 rounded-xl" rows={2} value={offerForm.deliverables} onChange={handleOfferChange} required />
           {error && <p className="text-red-600 text-sm">{error}</p>}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3">
             <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button type="submit" variant="secondary" loading={submitting}>Send Offer</Button>
           </div>
