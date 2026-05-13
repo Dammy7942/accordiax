@@ -33,7 +33,7 @@ interface Agreement {
   created_at: string;
 }
 
-type TabType = 'overview' | 'pending' | 'accepted' | 'paid' | 'rejected' | 'completed';
+type TabType = 'overview' | 'open' | 'pending' | 'accepted' | 'paid' | 'rejected' | 'completed';
 
 export default function ConsultantDashboard() {
   const router = useRouter();
@@ -82,7 +82,7 @@ export default function ConsultantDashboard() {
       setUserRole(profile.role);
       setUserName(profile?.full_name || user.email || null);
 
-      // 1. Open requests with student name
+      // Open requests with student name
       const { data: openRaw, error: openError } = await supabase
         .from('requests')
         .select(`
@@ -107,7 +107,7 @@ export default function ConsultantDashboard() {
         setOpenRequests(mapped);
       }
 
-      // 2. Consultant's offers with request title
+      // Consultant's offers with request title
       const { data: allOffers, error: offerError } = await supabase
         .from('agreements')
         .select(`
@@ -201,7 +201,7 @@ export default function ConsultantDashboard() {
     } else {
       setShowModal(false);
       alert('Offer sent to student!');
-      // Refresh offers
+      // Refresh all offers
       const { data: newOffers } = await supabase
         .from('agreements')
         .select(`
@@ -247,6 +247,7 @@ export default function ConsultantDashboard() {
   }
 
   const statCards = [
+    { label: 'Open Requests', value: openRequests.length, color: '#F59E0B', tab: 'open' },
     { label: 'Pending Offers', value: pendingOffers.length, color: '#FCD34D', tab: 'pending' },
     { label: 'Accepted Offers', value: acceptedOffers.length, color: '#5EEAD4', tab: 'accepted' },
     { label: 'Paid Offers', value: paidOffers.length, color: '#A78BFA', tab: 'paid' },
@@ -255,6 +256,7 @@ export default function ConsultantDashboard() {
   ];
 
   const getCountForTab = (tab: string): number => {
+    if (tab === 'open') return openRequests.length;
     if (tab === 'pending') return pendingOffers.length;
     if (tab === 'accepted') return acceptedOffers.length;
     if (tab === 'paid') return paidOffers.length;
@@ -277,6 +279,28 @@ export default function ConsultantDashboard() {
     </div>
   );
 
+  const renderOpenRequest = (req: Request) => (
+    <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
+      <div className="flex flex-col md:flex-row justify-between gap-4">
+        <div className="flex-1">
+          <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
+          <p className="text-slate-600 text-sm mt-1">{req.description}</p>
+          <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
+            <span>Category: {req.category.replace('_', ' ')}</span>
+            {req.budget_range && <span>Budget: {req.budget_range}</span>}
+          </div>
+          <div className="flex flex-wrap gap-4 mt-2 text-xs text-slate-400">
+            <span>Posted by: {req.student_name}</span>
+            <span>Posted on: {formatDate(req.created_at)}</span>
+          </div>
+        </div>
+        <div className="flex items-center">
+          <Button variant="secondary" size="sm" onClick={() => openOfferModal(req)}>Make offer</Button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
@@ -293,147 +317,151 @@ export default function ConsultantDashboard() {
       <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Tab Bar */}
         <div className="flex flex-wrap border-b border-slate-200 gap-2">
-          {['overview', 'pending', 'accepted', 'paid', 'rejected', 'completed'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab as TabType)}
-              className={`px-4 py-2 font-medium text-sm transition-colors ${
-                activeTab === tab
-                  ? 'text-purple-600 border-b-2 border-purple-600'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {tab === 'overview' ? 'Overview' : `${tab.charAt(0).toUpperCase() + tab.slice(1)} (${getCountForTab(tab)})`}
-            </button>
-          ))}
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('open')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'open' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Open Requests ({getCountForTab('open')})
+          </button>
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'pending' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Pending Offers ({getCountForTab('pending')})
+          </button>
+          <button
+            onClick={() => setActiveTab('accepted')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'accepted' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Accepted Offers ({getCountForTab('accepted')})
+          </button>
+          <button
+            onClick={() => setActiveTab('paid')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'paid' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Paid Offers ({getCountForTab('paid')})
+          </button>
+          <button
+            onClick={() => setActiveTab('rejected')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'rejected' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Rejected Offers ({getCountForTab('rejected')})
+          </button>
+          <button
+            onClick={() => setActiveTab('completed')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'completed' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Completed ({getCountForTab('completed')})
+          </button>
         </div>
 
         {/* Overview Tab */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            {statCards.map((card) => (
-              <button
-                key={card.label}
-                onClick={() => setActiveTab(card.tab as TabType)}
-                className="flex flex-col gap-3 p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all"
-                style={{ borderColor: '#CBD5E1', textAlign: 'left' }}
-              >
-                <span className="text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
-                <span className="text-sm text-slate-600">{card.label}</span>
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 p-6">
+              <h2 className="text-2xl font-bold text-slate-800">Welcome to your Dashboard, {userName || userEmail}.</h2>
+              <p className="text-slate-600 mt-1">Browse open requests, manage your offers, and track agreements.</p>
+              <p className="text-slate-500 text-sm mt-2">Consultant Dashboard – Find students who need your expertise, submit offers, get paid, and build your reputation.</p>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              {statCards.map((card) => (
+                <button
+                  key={card.label}
+                  onClick={() => setActiveTab(card.tab as TabType)}
+                  className="flex flex-col gap-3 p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all"
+                  style={{ borderColor: '#CBD5E1', textAlign: 'left' }}
+                >
+                  <span className="text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
+                  <span className="text-sm text-slate-600">{card.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
         )}
 
-        {/* Open Requests Section – Always visible under overview? The original had it separate. Let's keep it always visible for easy access */}
-        {activeTab === 'overview' && (
+        {/* Open Requests Tab */}
+        {activeTab === 'open' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Open Requests from Students</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Open Requests from Students</h2>
+              <p className="text-slate-500 text-sm">Browse requests posted by students. Make a professional offer to help them.</p>
+            </div>
             {openRequests.length === 0 ? (
               <p className="text-slate-500">No open requests at the moment.</p>
             ) : (
-              <div className="space-y-4">
-                {openRequests.map((req) => (
-                  <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
-                    <div className="flex flex-col md:flex-row justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
-                        <p className="text-slate-600 text-sm mt-1">{req.description}</p>
-                        <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
-                          <span>Category: {req.category.replace('_', ' ')}</span>
-                          {req.budget_range && <span>Budget: {req.budget_range}</span>}
-                        </div>
-                        <div className="flex flex-wrap gap-4 mt-2 text-xs text-slate-400">
-                          <span>Posted by: {req.student_name}</span>
-                          <span>Posted on: {formatDate(req.created_at)}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center">
-                        <Button variant="secondary" size="sm" onClick={() => openOfferModal(req)}>
-                          Make offer
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <div className="space-y-4">{openRequests.map(renderOpenRequest)}</div>
             )}
           </Card>
         )}
 
-        {/* Detail Tabs Content */}
+        {/* Pending Offers Tab */}
         {activeTab === 'pending' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Pending Offers (Awaiting Student Decision)</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Pending Offers</h2>
+              <p className="text-slate-500 text-sm">Offers you have made that are waiting for student acceptance.</p>
+            </div>
             {pendingOffers.length === 0 ? <p className="text-slate-500">No pending offers.</p> : <div className="space-y-4">{pendingOffers.map(renderOfferCard)}</div>}
           </Card>
         )}
 
+        {/* Accepted Offers Tab */}
         {activeTab === 'accepted' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Accepted Offers (Awaiting Payment)</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Accepted Offers</h2>
+              <p className="text-slate-500 text-sm">Offers accepted by students. Awaiting payment completion.</p>
+            </div>
             {acceptedOffers.length === 0 ? <p className="text-slate-500">No accepted offers yet.</p> : <div className="space-y-4">{acceptedOffers.map(renderOfferCard)}</div>}
           </Card>
         )}
 
+        {/* Paid Offers Tab */}
         {activeTab === 'paid' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Paid Offers (Ready to Work)</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Paid Offers</h2>
+              <p className="text-slate-500 text-sm">Payments received. You can now start the work.</p>
+            </div>
             {paidOffers.length === 0 ? <p className="text-slate-500">No paid offers yet.</p> : <div className="space-y-4">{paidOffers.map(renderOfferCard)}</div>}
           </Card>
         )}
 
+        {/* Rejected Offers Tab */}
         {activeTab === 'rejected' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Rejected Offers</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Rejected Offers</h2>
+              <p className="text-slate-500 text-sm">Offers that were declined by students.</p>
+            </div>
             {rejectedOffers.length === 0 ? <p className="text-slate-500">No rejected offers.</p> : <div className="space-y-4">{rejectedOffers.map(renderOfferCard)}</div>}
           </Card>
         )}
 
+        {/* Completed Tab */}
         {activeTab === 'completed' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Completed Offers</h2>
-            {completedOffers.length === 0 ? <p className="text-slate-500">No completed offers yet.</p> : <div className="space-y-4">{completedOffers.map(renderOfferCard)}</div>}
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Completed Agreements</h2>
+              <p className="text-slate-500 text-sm">Work delivered and confirmed. Thank you for your service.</p>
+            </div>
+            {completedOffers.length === 0 ? <p className="text-slate-500">No completed agreements yet.</p> : <div className="space-y-4">{completedOffers.map(renderOfferCard)}</div>}
           </Card>
         )}
       </main>
 
-      {/* Modal for making an offer */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={`Make an offer for: ${selectedRequest?.title || ''}`}>
         <form onSubmit={submitOffer} className="space-y-4">
-          <textarea
-            name="scope"
-            placeholder="What exactly will you do? (scope of work)"
-            className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition"
-            rows={2}
-            value={offerForm.scope}
-            onChange={handleOfferChange}
-            required
-          />
-          <Input
-            type="number"
-            name="price"
-            placeholder="Price (in NGN, e.g., 5000)"
-            value={offerForm.price}
-            onChange={handleOfferChange}
-            required
-          />
-          <Input
-            name="timeline"
-            placeholder="Timeline (e.g., 5 days)"
-            value={offerForm.timeline}
-            onChange={handleOfferChange}
-            required
-          />
-          <textarea
-            name="deliverables"
-            placeholder="What will be delivered? (e.g., 5000 word report, references, etc.)"
-            className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 transition"
-            rows={2}
-            value={offerForm.deliverables}
-            onChange={handleOfferChange}
-            required
-          />
+          <textarea name="scope" placeholder="What exactly will you do? (scope of work)" className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500" rows={2} value={offerForm.scope} onChange={handleOfferChange} required />
+          <Input type="number" name="price" placeholder="Price (in NGN, e.g., 5000)" value={offerForm.price} onChange={handleOfferChange} required />
+          <Input name="timeline" placeholder="Timeline (e.g., 5 days)" value={offerForm.timeline} onChange={handleOfferChange} required />
+          <textarea name="deliverables" placeholder="What will be delivered? (e.g., 5000 word report, references, etc.)" className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500" rows={2} value={offerForm.deliverables} onChange={handleOfferChange} required />
           {error && <p className="text-red-600 text-sm">{error}</p>}
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>

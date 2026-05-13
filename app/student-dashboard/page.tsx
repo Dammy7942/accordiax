@@ -37,7 +37,7 @@ declare global {
   }
 }
 
-type TabType = 'overview' | 'pending' | 'accepted' | 'paid' | 'rejected' | 'completed';
+type TabType = 'overview' | 'pending' | 'accepted' | 'paid' | 'rejected' | 'completed' | 'myrequests';
 
 export default function StudentDashboard() {
   const router = useRouter();
@@ -98,40 +98,15 @@ export default function StudentDashboard() {
 
       if (reqData && reqData.length > 0) {
         const requestIds = reqData.map(r => r.id);
-        const { data: pendingData } = await supabase
-          .from('agreements')
-          .select('*')
-          .in('request_id', requestIds)
-          .eq('status', 'pending');
-        setPendingOffers(pendingData || []);
-
-        const { data: acceptedData } = await supabase
-          .from('agreements')
-          .select('*')
-          .in('request_id', requestIds)
-          .eq('status', 'accepted');
-        setAcceptedAgreements(acceptedData || []);
-
-        const { data: paidData } = await supabase
-          .from('agreements')
-          .select('*')
-          .in('request_id', requestIds)
-          .eq('status', 'paid');
-        setPaidAgreements(paidData || []);
-
-        const { data: rejectedData } = await supabase
-          .from('agreements')
-          .select('*')
-          .in('request_id', requestIds)
-          .eq('status', 'rejected');
-        setRejectedAgreements(rejectedData || []);
-
-        const { data: completedData } = await supabase
-          .from('agreements')
-          .select('*')
-          .in('request_id', requestIds)
-          .eq('status', 'completed');
-        setCompletedAgreements(completedData || []);
+        const refresh = async (status: string) => {
+          const { data } = await supabase.from('agreements').select('*').in('request_id', requestIds).eq('status', status);
+          return data || [];
+        };
+        setPendingOffers(await refresh('pending'));
+        setAcceptedAgreements(await refresh('accepted'));
+        setPaidAgreements(await refresh('paid'));
+        setRejectedAgreements(await refresh('rejected'));
+        setCompletedAgreements(await refresh('completed'));
       }
 
       setLoading(false);
@@ -174,7 +149,6 @@ export default function StudentDashboard() {
     } else {
       setShowModal(false);
       setFormData({ title: '', description: '', category: 'project_supervision', budget_range: '' });
-      // Refresh all data
       const { data: newReqs } = await supabase
         .from('requests')
         .select('*')
@@ -260,11 +234,8 @@ export default function StudentDashboard() {
     if (error) {
       alert('Error rejecting offer: ' + error.message);
     } else {
-      // Remove from pending list
       setPendingOffers(prev => prev.filter(o => o.id !== agreementId));
       alert('Offer rejected.');
-      // We will refresh all agreements later; but for immediate UI, we also need to add to rejected list.
-      // Simpler: reload or just refetch. We'll do a full refresh in background.
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: newReqs } = await supabase
@@ -290,7 +261,6 @@ export default function StudentDashboard() {
   };
 
   const handlePay = async (agreement: Agreement) => {
-    // Wait for Paystack script to load
     for (let i = 0; i < 30; i++) {
       if (window.PaystackPop) break;
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -375,12 +345,23 @@ export default function StudentDashboard() {
   }
 
   const statCards = [
+    { label: 'My Requests', value: requests.length, color: '#F59E0B', tab: 'myrequests' },
     { label: 'Pending Offers', value: pendingOffers.length, color: '#FCD34D', tab: 'pending' },
     { label: 'Ready for Payment', value: acceptedAgreements.length, color: '#5EEAD4', tab: 'accepted' },
     { label: 'Paid Agreements', value: paidAgreements.length, color: '#A78BFA', tab: 'paid' },
     { label: 'Rejected Offers', value: rejectedAgreements.length, color: '#F87171', tab: 'rejected' },
     { label: 'Completed', value: completedAgreements.length, color: '#34D399', tab: 'completed' },
   ];
+
+  const getCountForTab = (tab: string): number => {
+    if (tab === 'myrequests') return requests.length;
+    if (tab === 'pending') return pendingOffers.length;
+    if (tab === 'accepted') return acceptedAgreements.length;
+    if (tab === 'paid') return paidAgreements.length;
+    if (tab === 'rejected') return rejectedAgreements.length;
+    if (tab === 'completed') return completedAgreements.length;
+    return 0;
+  };
 
   const renderAgreementCard = (agreement: Agreement, showPayButton: boolean = false) => (
     <div key={agreement.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
@@ -395,12 +376,7 @@ export default function StudentDashboard() {
         </div>
         {showPayButton && (
           <div className="flex items-center">
-            <Button
-              variant="primary"
-              onClick={() => handlePay(agreement)}
-              loading={payingAgreement === agreement.id}
-              className="whitespace-nowrap"
-            >
+            <Button variant="primary" onClick={() => handlePay(agreement)} loading={payingAgreement === agreement.id} className="whitespace-nowrap">
               Pay Now
             </Button>
           </div>
@@ -460,6 +436,23 @@ export default function StudentDashboard() {
     </div>
   );
 
+  const renderMyRequest = (req: Request) => (
+    <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
+      <div className="flex justify-between items-start">
+        <div>
+          <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
+          <p className="text-slate-600 text-sm mt-1">{req.description}</p>
+          <div className="flex flex-wrap gap-3 mt-2 text-xs">
+            <span className="text-slate-500">Category: {req.category.replace('_', ' ')}</span>
+            {req.budget_range && <span className="text-slate-500">Budget: {req.budget_range}</span>}
+            <Badge status={req.status as any} />
+          </div>
+          <p className="text-xs text-slate-400 mt-2">Requested on: {formatDate(req.created_at)}</p>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
@@ -476,103 +469,144 @@ export default function StudentDashboard() {
       <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Tab Bar */}
         <div className="flex flex-wrap border-b border-slate-200 gap-2">
-          {['overview', 'pending', 'accepted', 'paid', 'rejected', 'completed'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab as TabType)}
-              className={`px-4 py-2 font-medium text-sm transition-colors ${
-                activeTab === tab
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {tab === 'overview' ? 'Overview' : `${tab.charAt(0).toUpperCase() + tab.slice(1)} (${getCountForTab(tab)})`}
-            </button>
-          ))}
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('myrequests')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'myrequests' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            My Requests ({getCountForTab('myrequests')})
+          </button>
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'pending' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Pending Offers ({getCountForTab('pending')})
+          </button>
+          <button
+            onClick={() => setActiveTab('accepted')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'accepted' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Ready for Payment ({getCountForTab('accepted')})
+          </button>
+          <button
+            onClick={() => setActiveTab('paid')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'paid' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Paid Agreements ({getCountForTab('paid')})
+          </button>
+          <button
+            onClick={() => setActiveTab('rejected')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'rejected' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Rejected Offers ({getCountForTab('rejected')})
+          </button>
+          <button
+            onClick={() => setActiveTab('completed')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'completed' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Completed ({getCountForTab('completed')})
+          </button>
         </div>
 
-        {/* Overview Tab */}
+        {/* Overview Tab Content */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            {statCards.map((card) => (
-              <button
-                key={card.label}
-                onClick={() => setActiveTab(card.tab as TabType)}
-                className="flex flex-col gap-3 p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all"
-                style={{ borderColor: '#CBD5E1', textAlign: 'left' }}
-              >
-                <span className="text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
-                <span className="text-sm text-slate-600">{card.label}</span>
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 p-6">
+              <h2 className="text-2xl font-bold text-slate-800">Welcome to your Dashboard, {userName || userEmail}.</h2>
+              <p className="text-slate-600 mt-1">Track your requests, offers, agreements, and payments all in one place.</p>
+              <p className="text-slate-500 text-sm mt-2">Student Dashboard – Post help requests, review consultant offers, make secure payments, and monitor your academic support journey.</p>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              {statCards.map((card) => (
+                <button
+                  key={card.label}
+                  onClick={() => setActiveTab(card.tab as TabType)}
+                  className="flex flex-col gap-3 p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all"
+                  style={{ borderColor: '#CBD5E1', textAlign: 'left' }}
+                >
+                  <span className="text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
+                  <span className="text-sm text-slate-600">{card.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
         )}
 
-        {/* Detail Tabs Content */}
+        {/* My Requests Tab */}
+        {activeTab === 'myrequests' && (
+          <Card>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">My Requests</h2>
+              <p className="text-slate-500 text-sm">Create, manage, and track your service requests. Consultants will make offers based on your needs.</p>
+              <Button variant="primary" className="mt-3" onClick={() => setShowModal(true)}>+ New Request</Button>
+            </div>
+            {requests.length === 0 ? (
+              <p className="text-slate-500">You haven't posted any requests yet.</p>
+            ) : (
+              <div className="space-y-4">{requests.map(renderMyRequest)}</div>
+            )}
+          </Card>
+        )}
+
+        {/* Pending Offers Tab */}
         {activeTab === 'pending' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Pending Offers</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Pending Offers</h2>
+              <p className="text-slate-500 text-sm">Offers received from consultants. Review the terms, then accept or reject.</p>
+            </div>
             {pendingOffers.length === 0 ? <p className="text-slate-500">No pending offers.</p> : <div className="space-y-4">{pendingOffers.map(renderPendingOffer)}</div>}
           </Card>
         )}
 
+        {/* Ready for Payment Tab */}
         {activeTab === 'accepted' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Accepted Agreements – Ready for Payment</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Ready for Payment</h2>
+              <p className="text-slate-500 text-sm">Agreements you have accepted. Secure payment via Paystack to start the work.</p>
+            </div>
             {acceptedAgreements.length === 0 ? <p className="text-slate-500">No accepted agreements awaiting payment.</p> : <div className="space-y-4">{acceptedAgreements.map((ag) => renderAgreementCard(ag, true))}</div>}
           </Card>
         )}
 
+        {/* Paid Agreements Tab */}
         {activeTab === 'paid' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Paid Agreements</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Paid Agreements</h2>
+              <p className="text-slate-500 text-sm">Payments completed. The consultant will now deliver the work. Track progress here.</p>
+            </div>
             {paidAgreements.length === 0 ? <p className="text-slate-500">No paid agreements yet.</p> : <div className="space-y-4">{paidAgreements.map((ag) => renderAgreementCard(ag, false))}</div>}
           </Card>
         )}
 
+        {/* Rejected Offers Tab */}
         {activeTab === 'rejected' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Rejected Offers</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Rejected Offers</h2>
+              <p className="text-slate-500 text-sm">Offers you declined. If you change your mind, you may contact the consultant directly.</p>
+            </div>
             {rejectedAgreements.length === 0 ? <p className="text-slate-500">No rejected offers.</p> : <div className="space-y-4">{rejectedAgreements.map(renderRejectedCard)}</div>}
           </Card>
         )}
 
+        {/* Completed Tab */}
         {activeTab === 'completed' && (
           <Card>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Completed Agreements</h2>
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-slate-800">Completed Agreements</h2>
+              <p className="text-slate-500 text-sm">Work delivered and confirmed. Thank you for using Accordiax. Please leave a rating.</p>
+            </div>
             {completedAgreements.length === 0 ? <p className="text-slate-500">No completed agreements yet.</p> : <div className="space-y-4">{completedAgreements.map(renderCompletedCard)}</div>}
           </Card>
         )}
-
-        {/* My Requests Section (always visible) */}
-        <Card>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold text-slate-800">My Requests</h2>
-            <Button variant="primary" onClick={() => setShowModal(true)}>+ New Request</Button>
-          </div>
-          {requests.length === 0 ? (
-            <p className="text-slate-500">You haven't posted any requests yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {requests.map((req) => (
-                <div key={req.id} className="border border-slate-200 rounded-xl p-4 hover:shadow transition">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
-                      <p className="text-slate-600 text-sm mt-1">{req.description}</p>
-                      <div className="flex flex-wrap gap-3 mt-2 text-xs">
-                        <span className="text-slate-500">Category: {req.category.replace('_', ' ')}</span>
-                        {req.budget_range && <span className="text-slate-500">Budget: {req.budget_range}</span>}
-                        <Badge status={req.status as any} />
-                      </div>
-                      <p className="text-xs text-slate-400 mt-2">Requested on: {formatDate(req.created_at)}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
       </main>
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Create a new request">
@@ -594,13 +628,4 @@ export default function StudentDashboard() {
       </Modal>
     </div>
   );
-
-  function getCountForTab(tab: string): number {
-    if (tab === 'pending') return pendingOffers.length;
-    if (tab === 'accepted') return acceptedAgreements.length;
-    if (tab === 'paid') return paidAgreements.length;
-    if (tab === 'rejected') return rejectedAgreements.length;
-    if (tab === 'completed') return completedAgreements.length;
-    return 0;
-  }
 }
