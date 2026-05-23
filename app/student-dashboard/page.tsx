@@ -30,6 +30,22 @@ interface Agreement {
   deliverables: string;
   status: string;
   created_at: string;
+  dispute_reason?: string;
+  dispute_details?: string;
+  dispute_raised_at?: string;
+  appeal_reason?: string;
+  appeal_details?: string;
+  found_guilty?: boolean | null;
+  resolution_notes?: string;
+}
+
+interface ProfileStats {
+  full_name: string;
+  total_agreements: number;
+  completed_agreements: number;
+  disputed_agreements: number;
+  rejected_agreements: number;
+  cancelled_agreements: number;
 }
 
 declare global {
@@ -45,6 +61,7 @@ export default function StudentDashboard() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'student' | 'consultant' | null>(null);
+  const [profileStats, setProfileStats] = useState<ProfileStats | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
   const [pendingOffers, setPendingOffers] = useState<Agreement[]>([]);
   const [acceptedAgreements, setAcceptedAgreements] = useState<Agreement[]>([]);
@@ -67,6 +84,25 @@ export default function StudentDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Dispute, appeal, chat state
+  const [disputeModalOpen, setDisputeModalOpen] = useState(false);
+  const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [disputeDetails, setDisputeDetails] = useState('');
+  const [disputeEvidence, setDisputeEvidence] = useState<File | null>(null);
+  const [appealModalOpen, setAppealModalOpen] = useState(false);
+  const [appealReason, setAppealReason] = useState('');
+  const [appealDetails, setAppealDetails] = useState('');
+  const [appealEvidence, setAppealEvidence] = useState<File | null>(null);
+  const [chatModalOpen, setChatModalOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
+  const [ratingForAgreement, setRatingForAgreement] = useState<Agreement | null>(null);
+  const [ratingValue, setRatingValue] = useState(0);
+
   useEffect(() => {
     const getUserAndData = async () => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -75,10 +111,11 @@ export default function StudentDashboard() {
         return;
       }
       setUserEmail(user.email || null);
+      setCurrentUserId(user.id);
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('full_name, role')
+        .select('full_name, role, total_agreements, completed_agreements, disputed_agreements, rejected_agreements, cancelled_agreements')
         .eq('id', user.id)
         .single();
 
@@ -89,6 +126,14 @@ export default function StudentDashboard() {
 
       setUserRole(profile.role);
       setUserName(profile?.full_name || user.email || null);
+      setProfileStats({
+        full_name: profile.full_name || '',
+        total_agreements: profile.total_agreements || 0,
+        completed_agreements: profile.completed_agreements || 0,
+        disputed_agreements: profile.disputed_agreements || 0,
+        rejected_agreements: profile.rejected_agreements || 0,
+        cancelled_agreements: profile.cancelled_agreements || 0,
+      });
 
       const { data: reqData, error: reqError } = await supabase
         .from('requests')
@@ -275,17 +320,382 @@ export default function StudentDashboard() {
       .update({ status: 'completed' })
       .eq('id', agreementId);
     if (error) alert('Error: ' + error.message);
-    else { alert('Work approved! Agreement completed.'); window.location.reload(); }
+    else {
+      alert('Work approved! Agreement completed.');
+      // Update profile stats: increment completed_agreements
+      await supabase.rpc('increment_user_stats', { p_user_id: userEmail, p_type: 'completed' }); // You'll need to create this RPC or handle manually
+      window.location.reload();
+    }
   };
 
-  const handleDispute = async (agreementId: string) => {
+  const handleDispute = (agreement: Agreement) => {
+    setSelectedAgreement(agreement);
+    setDisputeReason('');
+    setDisputeDetails('');
+    setDisputeEvidence(null);
+    setDisputeModalOpen(true);
+  };
+
+  const submitDispute = async () => {
+    if (!selectedAgreement) return;
+    if (!disputeReason) {
+      alert('Please select a reason for dispute');
+      return;
+    }
+    setActionLoading(selectedAgreement.id);
+    let evidenceUrl = null;
+    if (disputeEvidence) {
+      const fileExt = disputeEvidence.name.split('.').pop();
+      const fileName = `${selectedAgreement.id}_${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('dispute_evidence')
+        .upload(fileName, disputeEvidence);
+      if (uploadError) console.error('Upload error:', uploadError);
+      else {
+        const { data: publicUrl } = supabase.storage
+          .from('dispute_evidence')
+          .getPublicUrl(fileName);
+        evidenceUrl = publicUrl.publicUrl;
+      }
+    }
     const { error } = await supabase
       .from('agreements')
-      .update({ status: 'disputed' })
-      .eq('id', agreementId);
+      .update({
+        status: 'disputed',
+        dispute_reason: disputeReason,
+        dispute_details: disputeDetails + (evidenceUrl ? `\nEvidence: ${evidenceUrl}` : ''),
+        dispute_raised_by: (await supabase.auth.getUser()).data.user?.id,
+        dispute_raised_at: new Date().toISOString(),
+      })
+      .eq('id', selectedAgreement.id);
     if (error) alert('Error: ' + error.message);
-    else { alert('Dispute raised. Consultant will be notified.'); window.location.reload(); }
+    else {
+      alert('Dispute raised. Consultant will be notified.');
+      // Send message in chat
+      await supabase.from('agreement_messages').insert({
+        agreement_id: selectedAgreement.id,
+        sender_id: (await supabase.auth.getUser()).data.user?.id,
+        message: `🚨 DISPUTE RAISED: ${disputeReason}. ${disputeDetails || 'No details provided.'}`,
+      });
+      window.location.reload();
+    }
+    setDisputeModalOpen(false);
+    setActionLoading(null);
   };
+
+  const handleAppeal = (agreement: Agreement) => {
+    setSelectedAgreement(agreement);
+    setAppealReason('');
+    setAppealDetails('');
+    setAppealEvidence(null);
+    setAppealModalOpen(true);
+  };
+
+  const submitAppeal = async () => {
+    if (!selectedAgreement) return;
+    if (!appealReason) {
+      alert('Please provide an appeal reason');
+      return;
+    }
+    setActionLoading(selectedAgreement.id);
+    let evidenceUrl = null;
+    if (appealEvidence) {
+      const fileExt = appealEvidence.name.split('.').pop();
+      const fileName = `${selectedAgreement.id}_appeal_${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('dispute_evidence')
+        .upload(fileName, appealEvidence);
+      if (!uploadError) {
+        const { data: publicUrl } = supabase.storage
+          .from('dispute_evidence')
+          .getPublicUrl(fileName);
+        evidenceUrl = publicUrl.publicUrl;
+      }
+    }
+    const { error } = await supabase
+      .from('agreements')
+      .update({
+        status: 'appealed',
+        appeal_reason: appealReason,
+        appeal_details: appealDetails + (evidenceUrl ? `\nEvidence: ${evidenceUrl}` : ''),
+        appeal_raised_by: (await supabase.auth.getUser()).data.user?.id,
+        appeal_raised_at: new Date().toISOString(),
+      })
+      .eq('id', selectedAgreement.id);
+    if (error) alert('Error: ' + error.message);
+    else {
+      alert('Appeal submitted. Admin will review.');
+      // Send email to admin (optional, using Supabase Edge Function)
+      window.location.reload();
+    }
+    setAppealModalOpen(false);
+    setActionLoading(null);
+  };
+
+  const openChat = async (agreement: Agreement) => {
+    setSelectedAgreement(agreement);
+    const { data, error } = await supabase
+      .from('agreement_messages')
+      .select(`
+        *,
+        sender:sender_id (
+          full_name
+        )
+      `)
+      .eq('agreement_id', agreement.id)
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('Chat fetch error:', error);
+      alert('Could not load messages: ' + error.message);
+    } else {
+      setChatMessages(data || []);
+    }
+    setChatModalOpen(true);
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !selectedAgreement) return;
+    setSendingMessage(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert('You must be logged in to send messages');
+        return;
+      }
+      const { error } = await supabase.from('agreement_messages').insert({
+        agreement_id: selectedAgreement.id,
+        sender_id: user.id,
+        message: newMessage.trim(),
+      });
+      if (error) {
+        console.error('Send error:', error);
+        alert('Failed to send message: ' + error.message);
+      } else {
+        setNewMessage('');
+        const { data: refreshed } = await supabase
+          .from('agreement_messages')
+          .select(`
+            *,
+            sender:sender_id (
+              full_name
+            )
+          `)
+          .eq('agreement_id', selectedAgreement.id)
+          .order('created_at', { ascending: true });
+        setChatMessages(refreshed || []);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('An error occurred while sending');
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const openRatingModal = (agreement: Agreement) => {
+    setRatingForAgreement(agreement);
+    setRatingValue(0);
+    setRatingModalOpen(true);
+  };
+
+  const submitRating = async () => {
+    if (!ratingForAgreement || ratingValue === 0) return;
+    // Store rating in a ratings table (for now, we'll store in agreements)
+    const { error } = await supabase
+      .from('agreements')
+      .update({ rating_given: true, rating: ratingValue })
+      .eq('id', ratingForAgreement.id);
+    if (error) alert('Error: ' + error.message);
+    else {
+      alert(`Thank you for rating ${ratingValue} stars!`);
+      setRatingModalOpen(false);
+      window.location.reload();
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const calculateCompletionRate = () => {
+    if (!profileStats) return 0;
+    const total = profileStats.total_agreements || 1;
+    const completed = profileStats.completed_agreements || 0;
+    return Math.round((completed / total) * 100);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  const statCards = [
+    { label: 'My Requests', value: requests.length, color: '#F59E0B', tab: 'myrequests' },
+    { label: 'Pending Offers', value: pendingOffers.length, color: '#FCD34D', tab: 'pending' },
+    { label: 'Ready for Payment', value: acceptedAgreements.length, color: '#5EEAD4', tab: 'accepted' },
+    { label: 'Paid Agreements', value: paidAgreements.length, color: '#A78BFA', tab: 'paid' },
+    { label: 'Delivered', value: deliveredAgreements.length, color: '#60A5FA', tab: 'delivered' },
+    { label: 'Rejected Offers', value: rejectedAgreements.length, color: '#F87171', tab: 'rejected' },
+    { label: 'Completed', value: completedAgreements.length, color: '#34D399', tab: 'completed' },
+  ];
+
+  const getCountForTab = (tab: string): number => {
+    if (tab === 'myrequests') return requests.length;
+    if (tab === 'pending') return pendingOffers.length;
+    if (tab === 'accepted') return acceptedAgreements.length;
+    if (tab === 'paid') return paidAgreements.length;
+    if (tab === 'delivered') return deliveredAgreements.length;
+    if (tab === 'rejected') return rejectedAgreements.length;
+    if (tab === 'completed') return completedAgreements.length;
+    return 0;
+  };
+
+  const renderAgreementCard = (agreement: Agreement, showPayButton: boolean = false) => (
+    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
+      <div className="flex flex-col gap-3">
+        <div>
+          <p className="text-sm text-slate-500">Consultant: {agreement.consultant_name}</p>
+          <p className="text-sm text-slate-600 mt-2"><strong>Scope:</strong> {agreement.scope}</p>
+          <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{agreement.price.toLocaleString()}</p>
+          <p className="text-sm text-slate-600"><strong>Timeline:</strong> {agreement.timeline}</p>
+          <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {agreement.deliverables}</p>
+          <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(agreement.created_at)}</p>
+          <button
+            onClick={() => openChat(agreement)}
+            className="text-xs text-blue-600 hover:underline mt-2"
+          >
+            💬 Chat
+          </button>
+          {agreement.status === 'completed' && !(agreement as any).rating_given && (
+            <button
+              onClick={() => openRatingModal(agreement)}
+              className="ml-3 text-xs text-yellow-600 hover:underline"
+            >
+              ⭐ Rate
+            </button>
+          )}
+        </div>
+        {showPayButton && (
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={() => handlePay(agreement)} loading={payingAgreement === agreement.id} className="whitespace-nowrap text-sm px-3 py-1.5">
+              Pay Now
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderPendingOffer = (offer: Agreement) => (
+    <div key={offer.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
+      <div className="flex flex-col gap-3">
+        <div>
+          <p className="text-sm text-slate-500">From consultant: {offer.consultant_name}</p>
+          <p className="text-sm text-slate-600 mt-2"><strong>Scope:</strong> {offer.scope}</p>
+          <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
+          <p className="text-sm text-slate-600"><strong>Timeline:</strong> {offer.timeline}</p>
+          <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
+          <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(offer.created_at)}</p>
+          <button
+            onClick={() => openChat(offer)}
+            className="text-xs text-blue-600 hover:underline mt-2"
+          >
+            💬 Chat
+          </button>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="primary" size="sm" onClick={() => handleAccept(offer.id, offer.request_id)} loading={actionLoading === offer.id}>
+            Accept
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleReject(offer.id)} loading={actionLoading === offer.id}>
+            Reject
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderDeliveredCard = (agreement: Agreement) => (
+    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
+      <div className="flex flex-col gap-3">
+        <div>
+          <Badge status="delivered" />
+          <p className="text-sm text-slate-500 mt-2">Consultant: {agreement.consultant_name}</p>
+          <p className="text-sm text-slate-600 mt-1"><strong>Scope:</strong> {agreement.scope}</p>
+          <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{agreement.price.toLocaleString()}</p>
+          <p className="text-sm text-slate-600"><strong>Timeline:</strong> {agreement.timeline}</p>
+          <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {agreement.deliverables}</p>
+          <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(agreement.created_at)}</p>
+          <button
+            onClick={() => openChat(agreement)}
+            className="text-xs text-blue-600 hover:underline mt-2"
+          >
+            💬 Chat
+          </button>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="primary" size="sm" onClick={() => handleApprove(agreement.id)}>Approve</Button>
+          <Button variant="outline" size="sm" onClick={() => handleDispute(agreement)}>Dispute</Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderRejectedCard = (agreement: Agreement) => (
+    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 break-words">
+      <div className="flex flex-col gap-2">
+        <div><Badge status="rejected" /></div>
+        <p className="text-sm text-slate-500">Consultant: {agreement.consultant_name}</p>
+        <p className="text-sm text-slate-600"><strong>Scope:</strong> {agreement.scope}</p>
+        <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{agreement.price.toLocaleString()}</p>
+        <p className="text-sm text-slate-600"><strong>Timeline:</strong> {agreement.timeline}</p>
+        <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {agreement.deliverables}</p>
+        <p className="text-xs text-slate-400">Offer made: {formatDate(agreement.created_at)}</p>
+        {agreement.dispute_reason && (
+          <p className="text-xs text-red-500 mt-1"><strong>Dispute:</strong> {agreement.dispute_reason}</p>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderCompletedCard = (agreement: Agreement) => (
+    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 break-words">
+      <div className="flex flex-col gap-2">
+        <div><Badge status="completed" /></div>
+        <p className="text-sm text-slate-500">Consultant: {agreement.consultant_name}</p>
+        <p className="text-sm text-slate-600"><strong>Scope:</strong> {agreement.scope}</p>
+        <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{agreement.price.toLocaleString()}</p>
+        <p className="text-sm text-slate-600"><strong>Timeline:</strong> {agreement.timeline}</p>
+        <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {agreement.deliverables}</p>
+        <p className="text-xs text-slate-400">Offer made: {formatDate(agreement.created_at)}</p>
+        <button
+          onClick={() => openChat(agreement)}
+          className="text-xs text-blue-600 hover:underline mt-2"
+        >
+          💬 Chat
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderMyRequest = (req: Request) => (
+    <div key={req.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
+      <div>
+        <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
+        <p className="text-slate-600 text-sm mt-1">{req.description}</p>
+        <div className="flex flex-wrap gap-2 mt-2 text-xs">
+          <span className="text-slate-500">Category: {req.category.replace('_', ' ')}</span>
+          {req.budget_range && <span className="text-slate-500">Budget: {req.budget_range}</span>}
+          <Badge status={req.status as any} />
+        </div>
+        <p className="text-xs text-slate-400 mt-2">Requested on: {formatDate(req.created_at)}</p>
+      </div>
+    </div>
+  );
 
   const handlePay = async (agreement: Agreement) => {
     for (let i = 0; i < 30; i++) {
@@ -358,128 +768,6 @@ export default function StudentDashboard() {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  const statCards = [
-    { label: 'My Requests', value: requests.length, color: '#F59E0B', tab: 'myrequests' },
-    { label: 'Pending Offers', value: pendingOffers.length, color: '#FCD34D', tab: 'pending' },
-    { label: 'Ready for Payment', value: acceptedAgreements.length, color: '#5EEAD4', tab: 'accepted' },
-    { label: 'Paid Agreements', value: paidAgreements.length, color: '#A78BFA', tab: 'paid' },
-    { label: 'Delivered', value: deliveredAgreements.length, color: '#60A5FA', tab: 'delivered' },
-    { label: 'Rejected Offers', value: rejectedAgreements.length, color: '#F87171', tab: 'rejected' },
-    { label: 'Completed', value: completedAgreements.length, color: '#34D399', tab: 'completed' },
-  ];
-
-  const getCountForTab = (tab: string): number => {
-    if (tab === 'myrequests') return requests.length;
-    if (tab === 'pending') return pendingOffers.length;
-    if (tab === 'accepted') return acceptedAgreements.length;
-    if (tab === 'paid') return paidAgreements.length;
-    if (tab === 'delivered') return deliveredAgreements.length;
-    if (tab === 'rejected') return rejectedAgreements.length;
-    if (tab === 'completed') return completedAgreements.length;
-    return 0;
-  };
-
-  const renderAgreementCard = (agreement: Agreement, showPayButton: boolean = false) => (
-    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
-      <div className="flex flex-col gap-3">
-        <div>
-          <p className="text-sm text-slate-500">Consultant: {agreement.consultant_name}</p>
-          <p className="text-sm text-slate-600 mt-2"><strong>Scope:</strong> {agreement.scope}</p>
-          <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{agreement.price.toLocaleString()}</p>
-          <p className="text-sm text-slate-600"><strong>Timeline:</strong> {agreement.timeline}</p>
-          <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {agreement.deliverables}</p>
-          <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(agreement.created_at)}</p>
-        </div>
-        {showPayButton && (
-          <div className="flex justify-end">
-            <Button variant="primary" onClick={() => handlePay(agreement)} loading={payingAgreement === agreement.id} className="whitespace-nowrap text-sm px-3 py-1.5">
-              Pay Now
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderPendingOffer = (offer: Agreement) => (
-    <div key={offer.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
-      <div className="flex flex-col gap-3">
-        <div>
-          <p className="text-sm text-slate-500">From consultant: {offer.consultant_name}</p>
-          <p className="text-sm text-slate-600 mt-2"><strong>Scope:</strong> {offer.scope}</p>
-          <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
-          <p className="text-sm text-slate-600"><strong>Timeline:</strong> {offer.timeline}</p>
-          <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
-          <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(offer.created_at)}</p>
-        </div>
-        <div className="flex gap-2 justify-end">
-          <Button variant="primary" size="sm" onClick={() => handleAccept(offer.id, offer.request_id)} loading={actionLoading === offer.id}>
-            Accept
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleReject(offer.id)} loading={actionLoading === offer.id}>
-            Reject
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderRejectedCard = (agreement: Agreement) => (
-    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 break-words">
-      <div className="flex flex-col gap-2">
-        <div><Badge status="rejected" /></div>
-        <p className="text-sm text-slate-500">Consultant: {agreement.consultant_name}</p>
-        <p className="text-sm text-slate-600"><strong>Scope:</strong> {agreement.scope}</p>
-        <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{agreement.price.toLocaleString()}</p>
-        <p className="text-sm text-slate-600"><strong>Timeline:</strong> {agreement.timeline}</p>
-        <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {agreement.deliverables}</p>
-        <p className="text-xs text-slate-400">Offer made: {formatDate(agreement.created_at)}</p>
-      </div>
-    </div>
-  );
-
-  const renderCompletedCard = (agreement: Agreement) => (
-    <div key={agreement.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 break-words">
-      <div className="flex flex-col gap-2">
-        <div><Badge status="completed" /></div>
-        <p className="text-sm text-slate-500">Consultant: {agreement.consultant_name}</p>
-        <p className="text-sm text-slate-600"><strong>Scope:</strong> {agreement.scope}</p>
-        <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{agreement.price.toLocaleString()}</p>
-        <p className="text-sm text-slate-600"><strong>Timeline:</strong> {agreement.timeline}</p>
-        <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {agreement.deliverables}</p>
-        <p className="text-xs text-slate-400">Offer made: {formatDate(agreement.created_at)}</p>
-      </div>
-    </div>
-  );
-
-  const renderMyRequest = (req: Request) => (
-    <div key={req.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
-      <div>
-        <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
-        <p className="text-slate-600 text-sm mt-1">{req.description}</p>
-        <div className="flex flex-wrap gap-2 mt-2 text-xs">
-          <span className="text-slate-500">Category: {req.category.replace('_', ' ')}</span>
-          {req.budget_range && <span className="text-slate-500">Budget: {req.budget_range}</span>}
-          <Badge status={req.status as any} />
-        </div>
-        <p className="text-xs text-slate-400 mt-2">Requested on: {formatDate(req.created_at)}</p>
-      </div>
-    </div>
-  );
-
   const tabs = [
     { key: 'overview', label: 'Overview' },
     { key: 'myrequests', label: `My Requests (${getCountForTab('myrequests')})` },
@@ -507,7 +795,6 @@ export default function StudentDashboard() {
             <span className="hidden sm:inline-flex">
               <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
             </span>
-            {/* Hamburger button – visible only on mobile */}
             <button
               onClick={() => setDrawerOpen(true)}
               className="block sm:hidden p-2 rounded-md text-slate-600 hover:bg-slate-100 focus:outline-none"
@@ -518,7 +805,7 @@ export default function StudentDashboard() {
         </div>
       </header>
 
-      {/* Desktop tabs (hidden on mobile) */}
+      {/* Desktop tabs */}
       <div className="hidden sm:block border-b border-slate-200">
         <div className="container mx-auto px-4 overflow-x-auto">
           <div className="flex gap-1 sm:gap-2 min-w-max">
@@ -542,12 +829,7 @@ export default function StudentDashboard() {
       {/* Mobile drawer */}
       {drawerOpen && (
         <>
-          {/* Overlay */}
-          <div
-            className="fixed inset-0 bg-black/50 z-40 sm:hidden"
-            onClick={() => setDrawerOpen(false)}
-          />
-          {/* Bottom half-screen modal */}
+          <div className="fixed inset-0 bg-black/50 z-40 sm:hidden" onClick={() => setDrawerOpen(false)} />
           <div className="fixed bottom-0 left-0 right-0 h-1/2 bg-white shadow-2xl z-50 sm:hidden flex flex-col rounded-t-2xl">
             <div className="flex justify-between items-center px-5 py-4 border-b border-slate-200">
               <h2 className="font-semibold text-slate-800">Navigate</h2>
@@ -571,12 +853,7 @@ export default function StudentDashboard() {
               ))}
             </div>
             <div className="border-t border-slate-200 px-5 py-3">
-              <button
-                onClick={handleLogout}
-                className="w-full text-left py-2 text-sm font-medium text-red-600 hover:text-red-700"
-              >
-                Logout
-              </button>
+              <button onClick={handleLogout} className="w-full text-left py-2 text-sm font-medium text-red-600 hover:text-red-700">Logout</button>
             </div>
           </div>
         </>
@@ -590,6 +867,12 @@ export default function StudentDashboard() {
               <h3 className="text-sm sm:text-lg font-bold text-slate-800 break-words">Welcome back, {userName || userEmail}.</h3>
               <p className="text-slate-600 text-sm sm:text-base mt-1">Track your requests, offers, agreements, and payments.</p>
               <p className="text-slate-500 text-xs sm:text-sm mt-2">Student Dashboard – Post help requests, review offers, pay securely, and monitor your academic support journey.</p>
+              {profileStats && (
+                <div className="mt-4 p-3 bg-slate-100 rounded-lg">
+                  <p className="text-sm font-medium">📊 Your Trust Score: <span className="font-bold">{calculateCompletionRate()}%</span> completion rate</p>
+                  <p className="text-xs text-slate-600">Based on {profileStats.total_agreements} total agreements | {profileStats.completed_agreements} completed | {profileStats.disputed_agreements} disputes | {profileStats.cancelled_agreements} cancelled</p>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {statCards.map((card) => (
@@ -654,31 +937,7 @@ export default function StudentDashboard() {
               <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Delivered Work</h2>
               <p className="text-slate-500 text-sm">The consultant has marked this work as delivered. Review and approve or raise a dispute.</p>
             </div>
-            {deliveredAgreements.length === 0 ? (
-              <p className="text-slate-500">No delivered agreements yet.</p>
-            ) : (
-              <div className="space-y-4">
-                {deliveredAgreements.map((ag) => (
-                  <div key={ag.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
-                    <div className="flex flex-col gap-3">
-                      <div>
-                        <Badge status="delivered" />
-                        <p className="text-sm text-slate-500 mt-2">Consultant: {ag.consultant_name}</p>
-                        <p className="text-sm text-slate-600 mt-1"><strong>Scope:</strong> {ag.scope}</p>
-                        <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{ag.price.toLocaleString()}</p>
-                        <p className="text-sm text-slate-600"><strong>Timeline:</strong> {ag.timeline}</p>
-                        <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {ag.deliverables}</p>
-                        <p className="text-xs text-slate-400 mt-2">Offer made: {formatDate(ag.created_at)}</p>
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <Button variant="primary" size="sm" onClick={() => handleApprove(ag.id)}>Approve</Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDispute(ag.id)}>Dispute</Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {deliveredAgreements.length === 0 ? <p className="text-slate-500">No delivered agreements yet.</p> : <div className="space-y-4">{deliveredAgreements.map(renderDeliveredCard)}</div>}
           </Card>
         )}
 
@@ -705,6 +964,7 @@ export default function StudentDashboard() {
         )}
       </main>
 
+      {/* New Request Modal */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Create a new request">
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input name="title" placeholder="Title" value={formData.title} onChange={handleChange} required />
@@ -721,6 +981,141 @@ export default function StudentDashboard() {
             <Button type="submit" loading={submitting}>Post Request</Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Dispute Modal */}
+      <Modal isOpen={disputeModalOpen} onClose={() => setDisputeModalOpen(false)} title="Raise a Dispute">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Reason for dispute *</label>
+            <select
+              value={disputeReason}
+              onChange={(e) => setDisputeReason(e.target.value)}
+              className="w-full border rounded p-2"
+              required
+            >
+              <option value="">Select reason</option>
+              <option value="Work incomplete">Work incomplete / not delivered as agreed</option>
+              <option value="Poor quality">Poor quality / not meeting requirements</option>
+              <option value="Missed deadline">Missed deadline</option>
+              <option value="Communication issue">Communication issue</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Details (optional)</label>
+            <textarea
+              value={disputeDetails}
+              onChange={(e) => setDisputeDetails(e.target.value)}
+              className="w-full border rounded p-2"
+              rows={3}
+              placeholder="Explain why you are disputing..."
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Upload evidence (optional)</label>
+            <input
+              type="file"
+              onChange={(e) => setDisputeEvidence(e.target.files?.[0] || null)}
+              className="w-full"
+              accept="image/*,application/pdf"
+            />
+          </div>
+          <Button onClick={submitDispute} loading={actionLoading === selectedAgreement?.id}>Submit Dispute</Button>
+        </div>
+      </Modal>
+
+      {/* Appeal Modal */}
+      <Modal isOpen={appealModalOpen} onClose={() => setAppealModalOpen(false)} title="Submit an Appeal">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Appeal reason *</label>
+            <textarea
+              value={appealReason}
+              onChange={(e) => setAppealReason(e.target.value)}
+              className="w-full border rounded p-2"
+              rows={2}
+              required
+              placeholder="Briefly state why you are appealing..."
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Detailed explanation (optional)</label>
+            <textarea
+              value={appealDetails}
+              onChange={(e) => setAppealDetails(e.target.value)}
+              className="w-full border rounded p-2"
+              rows={3}
+              placeholder="Provide additional context or evidence..."
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Upload evidence (optional)</label>
+            <input
+              type="file"
+              onChange={(e) => setAppealEvidence(e.target.files?.[0] || null)}
+              className="w-full"
+              accept="image/*,application/pdf"
+            />
+          </div>
+          <Button onClick={submitAppeal} loading={actionLoading === selectedAgreement?.id}>Submit Appeal</Button>
+        </div>
+      </Modal>
+
+      {/* Chat Modal */}
+      <Modal isOpen={chatModalOpen} onClose={() => setChatModalOpen(false)} title={`Chat - ${selectedAgreement?.consultant_name || 'Consultant'}`}>
+        <div className="h-96 flex flex-col">
+          <div className="flex-1 overflow-y-auto space-y-3 mb-4 p-2 bg-gray-50 rounded-lg">
+            {chatMessages.map((msg) => {
+              const isOwn = msg.sender_id === currentUserId;
+              return (
+                <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
+                  {!isOwn && (
+                    <span className="text-xs font-semibold text-slate-500 mb-1 ml-1">
+                      {msg.sender?.full_name || 'Unknown'}
+                    </span>
+                  )}
+                  <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${isOwn ? 'bg-blue-500 text-white rounded-br-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'}`}>
+                    <p className="text-sm break-words">{msg.message}</p>
+                    <span className={`text-xs ${isOwn ? 'text-blue-100' : 'text-slate-400'} block text-right mt-1`}>
+                      {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex gap-2 items-center">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type a message..."
+              className="flex-1 border border-slate-300 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+            />
+            <Button onClick={sendMessage} loading={sendingMessage} size="sm" className="rounded-full px-4">Send</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Rating Modal */}
+      <Modal isOpen={ratingModalOpen} onClose={() => setRatingModalOpen(false)} title="Rate this agreement">
+        <div className="space-y-4">
+          <p className="text-center">How would you rate your experience?</p>
+          <div className="flex justify-center gap-2">
+            {[1,2,3,4,5].map((star) => (
+              <button
+                key={star}
+                onClick={() => setRatingValue(star)}
+                className={`text-3xl ${ratingValue >= star ? 'text-yellow-500' : 'text-gray-300'}`}
+              >
+                ★
+              </button>
+            ))}
+          </div>
+          <Button onClick={submitRating} className="w-full">Submit Rating</Button>
+        </div>
       </Modal>
     </div>
   );
