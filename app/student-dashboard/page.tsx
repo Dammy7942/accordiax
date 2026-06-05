@@ -37,6 +37,9 @@ interface Agreement {
   appeal_details?: string;
   found_guilty?: boolean | null;
   resolution_notes?: string;
+  proposed_price?: number;
+  price_proposed_at?: string;
+  price_proposed_by?: string;
 }
 
 interface ProfileStats {
@@ -103,6 +106,17 @@ export default function StudentDashboard() {
   const [ratingForAgreement, setRatingForAgreement] = useState<Agreement | null>(null);
   const [ratingValue, setRatingValue] = useState(0);
 
+  // Price negotiation state
+  const [priceProposal, setPriceProposal] = useState<Agreement | null>(null);
+  const [showPriceProposalModal, setShowPriceProposalModal] = useState(false);
+
+  // Student-initiated price proposal
+  const [priceProposalModalOpen, setPriceProposalModalOpen] = useState(false);
+  const [selectedAgreementForProposal, setSelectedAgreementForProposal] = useState<Agreement | null>(null);
+  const [selectedPendingForProposal, setSelectedPendingForProposal] = useState<Agreement | null>(null);
+  const [proposedPriceInput, setProposedPriceInput] = useState('');
+  const [submittingProposal, setSubmittingProposal] = useState(false);
+
   useEffect(() => {
     const getUserAndData = async () => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -151,11 +165,19 @@ export default function StudentDashboard() {
           return data || [];
         };
         setPendingOffers(await refresh('pending'));
-        setAcceptedAgreements(await refresh('accepted'));
+        const accepted = await refresh('accepted');
+        setAcceptedAgreements(accepted);
         setPaidAgreements(await refresh('paid'));
         setRejectedAgreements(await refresh('rejected'));
         setCompletedAgreements(await refresh('completed'));
         setDeliveredAgreements(await refresh('delivered'));
+
+        // Check for active price proposal
+        const activeProposal = accepted.find(a => a.proposed_price !== null);
+        if (activeProposal && !showPriceProposalModal) {
+          setPriceProposal(activeProposal);
+          setShowPriceProposalModal(true);
+        }
       }
 
       setLoading(false);
@@ -322,8 +344,6 @@ export default function StudentDashboard() {
     if (error) alert('Error: ' + error.message);
     else {
       alert('Work approved! Agreement completed.');
-      // Update profile stats: increment completed_agreements
-      await supabase.rpc('increment_user_stats', { p_user_id: userEmail, p_type: 'completed' }); // You'll need to create this RPC or handle manually
       window.location.reload();
     }
   };
@@ -371,7 +391,6 @@ export default function StudentDashboard() {
     if (error) alert('Error: ' + error.message);
     else {
       alert('Dispute raised. Consultant will be notified.');
-      // Send message in chat
       await supabase.from('agreement_messages').insert({
         agreement_id: selectedAgreement.id,
         sender_id: (await supabase.auth.getUser()).data.user?.id,
@@ -425,11 +444,90 @@ export default function StudentDashboard() {
     if (error) alert('Error: ' + error.message);
     else {
       alert('Appeal submitted. Admin will review.');
-      // Send email to admin (optional, using Supabase Edge Function)
       window.location.reload();
     }
     setAppealModalOpen(false);
     setActionLoading(null);
+  };
+
+  const handleProposePriceOnPending = async () => {
+    if (!selectedPendingForProposal || !proposedPriceInput) return;
+    const priceNum = parseInt(proposedPriceInput, 10);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    setSubmittingProposal(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert('You must be logged in');
+      setSubmittingProposal(false);
+      return;
+    }
+    const { error } = await supabase
+      .from('agreements')
+      .update({
+        proposed_price: priceNum,
+        price_proposed_at: new Date().toISOString(),
+        price_proposed_by: user.id
+      })
+      .eq('id', selectedPendingForProposal.id);
+    if (error) {
+      alert('Error proposing price: ' + error.message);
+    } else {
+      alert('Price proposed! Consultant will review your request.');
+      const requestIds = requests.map(r => r.id);
+      const { data: newPending } = await supabase
+        .from('agreements')
+        .select('*')
+        .in('request_id', requestIds)
+        .eq('status', 'pending');
+      setPendingOffers(newPending || []);
+      setPriceProposalModalOpen(false);
+      setSelectedPendingForProposal(null);
+      setProposedPriceInput('');
+    }
+    setSubmittingProposal(false);
+  };
+
+  const handleProposePrice = async () => {
+    if (!selectedAgreementForProposal || !proposedPriceInput) return;
+    const priceNum = parseInt(proposedPriceInput, 10);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    setSubmittingProposal(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert('You must be logged in');
+      setSubmittingProposal(false);
+      return;
+    }
+    const { error } = await supabase
+      .from('agreements')
+      .update({
+        proposed_price: priceNum,
+        price_proposed_at: new Date().toISOString(),
+        price_proposed_by: user.id
+      })
+      .eq('id', selectedAgreementForProposal.id);
+    if (error) {
+      alert('Error proposing price: ' + error.message);
+    } else {
+      alert('Price proposed! Consultant will review your request.');
+      const requestIds = requests.map(r => r.id);
+      const { data: newAccepted } = await supabase
+        .from('agreements')
+        .select('*')
+        .in('request_id', requestIds)
+        .eq('status', 'accepted');
+      setAcceptedAgreements(newAccepted || []);
+      setPriceProposalModalOpen(false);
+      setSelectedAgreementForProposal(null);
+      setProposedPriceInput('');
+    }
+    setSubmittingProposal(false);
   };
 
   const openChat = async (agreement: Agreement) => {
@@ -500,7 +598,6 @@ export default function StudentDashboard() {
 
   const submitRating = async () => {
     if (!ratingForAgreement || ratingValue === 0) return;
-    // Store rating in a ratings table (for now, we'll store in agreements)
     const { error } = await supabase
       .from('agreements')
       .update({ rating_given: true, rating: ratingValue })
@@ -511,6 +608,63 @@ export default function StudentDashboard() {
       setRatingModalOpen(false);
       window.location.reload();
     }
+  };
+
+  const acceptPriceProposal = async () => {
+    if (!priceProposal) return;
+    setActionLoading(priceProposal.id);
+    const { error } = await supabase
+      .from('agreements')
+      .update({
+        price: priceProposal.proposed_price,
+        proposed_price: null,
+        price_proposed_at: null,
+        price_proposed_by: null
+      })
+      .eq('id', priceProposal.id);
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      alert('Price updated! You can now pay the new amount.');
+      const requestIds = requests.map(r => r.id);
+      const { data: newAccepted } = await supabase
+        .from('agreements')
+        .select('*')
+        .in('request_id', requestIds)
+        .eq('status', 'accepted');
+      setAcceptedAgreements(newAccepted || []);
+      setShowPriceProposalModal(false);
+      setPriceProposal(null);
+    }
+    setActionLoading(null);
+  };
+
+  const declinePriceProposal = async () => {
+    if (!priceProposal) return;
+    setActionLoading(priceProposal.id);
+    const { error } = await supabase
+      .from('agreements')
+      .update({
+        proposed_price: null,
+        price_proposed_at: null,
+        price_proposed_by: null
+      })
+      .eq('id', priceProposal.id);
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      alert('Proposal declined. Original price remains.');
+      const requestIds = requests.map(r => r.id);
+      const { data: newAccepted } = await supabase
+        .from('agreements')
+        .select('*')
+        .in('request_id', requestIds)
+        .eq('status', 'accepted');
+      setAcceptedAgreements(newAccepted || []);
+      setShowPriceProposalModal(false);
+      setPriceProposal(null);
+    }
+    setActionLoading(null);
   };
 
   const formatDate = (dateStr: string) => {
@@ -580,7 +734,20 @@ export default function StudentDashboard() {
           )}
         </div>
         {showPayButton && (
-          <div className="flex justify-end">
+          <div className="flex flex-wrap gap-2 justify-end">
+            {!agreement.proposed_price && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedAgreementForProposal(agreement);
+                  setProposedPriceInput('');
+                  setPriceProposalModalOpen(true);
+                }}
+              >
+                Propose new price
+              </Button>
+            )}
             <Button variant="primary" onClick={() => handlePay(agreement)} loading={payingAgreement === agreement.id} className="whitespace-nowrap text-sm px-3 py-1.5">
               Pay Now
             </Button>
@@ -607,13 +774,29 @@ export default function StudentDashboard() {
             💬 Chat
           </button>
         </div>
-        <div className="flex gap-2 justify-end">
+        <div className="flex flex-wrap gap-2 justify-end">
           <Button variant="primary" size="sm" onClick={() => handleAccept(offer.id, offer.request_id)} loading={actionLoading === offer.id}>
             Accept
           </Button>
           <Button variant="outline" size="sm" onClick={() => handleReject(offer.id)} loading={actionLoading === offer.id}>
             Reject
           </Button>
+          {offer.proposed_price ? (
+            <span className="text-xs text-amber-600 font-medium self-center">Proposal sent – awaiting consultant</span>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedPendingForProposal(offer);
+                setSelectedAgreementForProposal(null);
+                setProposedPriceInput('');
+                setPriceProposalModalOpen(true);
+              }}
+            >
+              Propose new price
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -1059,6 +1242,33 @@ export default function StudentDashboard() {
             />
           </div>
           <Button onClick={submitAppeal} loading={actionLoading === selectedAgreement?.id}>Submit Appeal</Button>
+        </div>
+      </Modal>
+
+      {/* Price Proposal Modal */}
+      <Modal isOpen={showPriceProposalModal} onClose={() => setShowPriceProposalModal(false)} title="Price Proposal">
+        <div className="space-y-4">
+          <p>The consultant has proposed a new price for your agreement.</p>
+          <p><strong>Original price:</strong> ₦{priceProposal?.price?.toLocaleString()}</p>
+          <p><strong>Proposed price:</strong> ₦{priceProposal?.proposed_price?.toLocaleString()}</p>
+          <div className="flex gap-3">
+            <Button onClick={acceptPriceProposal} loading={actionLoading === priceProposal?.id}>Accept</Button>
+            <Button variant="outline" onClick={declinePriceProposal} loading={actionLoading === priceProposal?.id}>Decline</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Student Propose Price Modal */}
+      <Modal isOpen={priceProposalModalOpen} onClose={() => { setPriceProposalModalOpen(false); setSelectedPendingForProposal(null); setSelectedAgreementForProposal(null); }} title="Propose new price">
+        <div className="space-y-4">
+          <p>Current price: ₦{(selectedPendingForProposal ?? selectedAgreementForProposal)?.price?.toLocaleString()}</p>
+          <Input
+            type="number"
+            placeholder="Enter new price (₦)"
+            value={proposedPriceInput}
+            onChange={(e) => setProposedPriceInput(e.target.value)}
+          />
+          <Button onClick={selectedPendingForProposal ? handleProposePriceOnPending : handleProposePrice} loading={submittingProposal}>Submit Proposal</Button>
         </div>
       </Modal>
 
