@@ -211,8 +211,7 @@ export default function ConsultantDashboard() {
       console.log('Logged consultant ID:', user.id);
       console.log('Total offers fetched:', allOffers?.length);
       console.log('Paid offers in raw data:', allOffers?.filter(o => o.status === 'paid').length);
-      console.log('Consultant IDs of paid offers:', allOffers?.filter(o => o.status === 'paid').map(o => o.consultant_id));
-      console.log('All offers with status:', allOffers?.map(o => ({ id: o.id, status: o.status, consultant_id: o.consultant_id })));
+
       console.log('======================');
       if (offerError) console.error(offerError);
       else {
