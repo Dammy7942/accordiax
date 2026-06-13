@@ -27,11 +27,13 @@ export async function GET() {
 
     // Transform the data to ensure a consistent structure.
     // This handles cases where the join returns 'null' for the request.
-    const transformedData = data.map(agreement => ({
+    const transformedData = (data as any[]).map((agreement: any) => ({
       ...agreement,
       requests: {
-        title: agreement.requests?.title || 'Untitled Request'
-      }
+        title: (Array.isArray(agreement.requests)
+          ? agreement.requests[0]?.title
+          : agreement.requests?.title) || 'Untitled Request',
+      },
     }));
 
     return NextResponse.json(transformedData);
