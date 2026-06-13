@@ -1,5 +1,6 @@
 // app/admin/page.tsx
 'use client';
+import { supabase } from '@/lib/supabaseClient';
 import { useEffect, useState } from 'react';
 
 export default function AdminPage() {
@@ -7,6 +8,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [secret, setSecret] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
+  const [consultants, setConsultants] = useState<any[]>([]);
+  const [loadingConsultants, setLoadingConsultants] = useState(false);
 
   const checkAuth = () => {
     if (secret === process.env.NEXT_PUBLIC_ADMIN_SECRET) setAuthenticated(true);
@@ -15,8 +18,28 @@ export default function AdminPage() {
   useEffect(() => {
     if (authenticated) {
       loadAppealed();
+      loadConsultants();
     }
   }, [authenticated]);
+
+  const loadConsultants = async () => {
+    setLoadingConsultants(true);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, verified')
+      .eq('role', 'consultant');
+    if (!error) setConsultants(data ?? []);
+    setLoadingConsultants(false);
+  };
+
+  const toggleVerification = async (consultantId: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ verified: !currentStatus })
+      .eq('id', consultantId);
+    if (error) alert(error.message);
+    else loadConsultants();
+  };
 
   const loadAppealed = async () => {
     try {
@@ -120,6 +143,47 @@ export default function AdminPage() {
           ))}
         </div>
       )}
+
+      <div className="mt-12">
+        <h2 className="text-xl font-bold mb-4">Consultant Verification</h2>
+        {loadingConsultants ? (
+          <p>Loading consultants...</p>
+        ) : consultants.length === 0 ? (
+          <p>No consultants found.</p>
+        ) : (
+          <table className="w-full border text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="text-left p-2 border">Name</th>
+                <th className="text-left p-2 border">Email</th>
+                <th className="text-left p-2 border">Status</th>
+                <th className="p-2 border">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {consultants.map((c) => (
+                <tr key={c.id} className="border-t">
+                  <td className="p-2 border">{c.full_name || '—'}</td>
+                  <td className="p-2 border">{c.email || '—'}</td>
+                  <td className="p-2 border">
+                    <span className={c.verified ? 'text-green-600 font-medium' : 'text-gray-400'}>
+                      {c.verified ? 'Verified' : 'Unverified'}
+                    </span>
+                  </td>
+                  <td className="p-2 border text-center">
+                    <button
+                      onClick={() => toggleVerification(c.id, c.verified)}
+                      className={`px-3 py-1 rounded text-white text-xs ${c.verified ? 'bg-red-500 hover:bg-red-600' : 'bg-green-600 hover:bg-green-700'}`}
+                    >
+                      {c.verified ? 'Unverify' : 'Verify'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }

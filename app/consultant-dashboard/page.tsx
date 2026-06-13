@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -58,6 +59,7 @@ export default function ConsultantDashboard() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [verified, setVerified] = useState(false);
   const [userRole, setUserRole] = useState<'student' | 'consultant' | null>(null);
   const [profileStats, setProfileStats] = useState<ProfileStats | null>(null);
   const [openRequests, setOpenRequests] = useState<Request[]>([]);
@@ -127,7 +129,7 @@ export default function ConsultantDashboard() {
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('full_name, role, total_agreements, completed_agreements, disputed_agreements, rejected_agreements, cancelled_agreements')
+        .select('full_name, role, verified, total_agreements, completed_agreements, disputed_agreements, rejected_agreements, cancelled_agreements')
         .eq('id', user.id)
         .single();
 
@@ -138,6 +140,7 @@ export default function ConsultantDashboard() {
 
       setUserRole(profile.role);
       setUserName(profile?.full_name || user.email || null);
+      setVerified(profile?.verified ?? false);
       setProfileStats({
         full_name: profile.full_name || '',
         total_agreements: profile.total_agreements || 0,
@@ -803,8 +806,16 @@ export default function ConsultantDashboard() {
         <div className="container mx-auto px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-700 to-indigo-700 bg-clip-text text-transparent">Accordiax</h1>
           <div className="flex items-center gap-2 sm:gap-4">
-            <span className="hidden sm:inline text-xs sm:text-sm text-slate-600 truncate max-w-[150px]">{userName || userEmail}</span>
+            <span className="hidden sm:inline flex items-center gap-2 text-xs sm:text-sm text-slate-600 truncate max-w-[200px]">
+              {userName || userEmail}
+              {verified && (
+                <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Verified</span>
+              )}
+            </span>
             {userRole && <RoleSwitcher currentRole={userRole} />}
+            <span className="hidden sm:inline-flex">
+              <Link href="/ratings"><Button variant="ghost" size="sm">Ratings History</Button></Link>
+            </span>
             <span className="hidden sm:inline-flex">
               <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
             </span>

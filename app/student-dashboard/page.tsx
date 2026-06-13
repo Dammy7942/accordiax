@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -872,6 +873,11 @@ export default function StudentDashboard() {
         >
           💬 Chat
         </button>
+        {agreement.status === 'completed' && !(agreement as any).rating_given && (
+          <div className="pt-2">
+            <Button variant="outline" size="sm" onClick={() => openRatingModal(agreement)}>Rate Consultant</Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -988,6 +994,9 @@ export default function StudentDashboard() {
           <div className="flex items-center gap-2 sm:gap-4">
             <span className="hidden sm:inline text-xs sm:text-sm text-slate-600 truncate max-w-[150px]">{userName || userEmail}</span>
             {userRole && <RoleSwitcher currentRole={userRole} />}
+            <span className="hidden sm:inline-flex">
+              <Link href="/ratings"><Button variant="ghost" size="sm">Ratings History</Button></Link>
+            </span>
             <span className="hidden sm:inline-flex">
               <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
             </span>
