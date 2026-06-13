@@ -1,7 +1,5 @@
 // app/admin/page.tsx
 'use client';
-import { supabase } from '@/lib/supabaseClient';
-import { getUserEmail } from '@/lib/getUserEmail';
 import { useEffect, useState } from 'react';
 
 export default function AdminPage() {
@@ -40,44 +38,21 @@ export default function AdminPage() {
   };
 
   const resolveAppeal = async (agreementId: string, guilty: boolean, notes: string) => {
-    const { error } = await supabase
-      .from('agreements')
-      .update({ found_guilty: guilty, status: guilty ? 'rejected' : 'completed', resolution_notes: notes })
-      .eq('id', agreementId);
-    if (error) alert(error.message);
-    else {
-      alert('Appeal resolved');
-      const { data: agreement } = await supabase
-        .from('agreements')
-        .select('consultant_id, request_id')
-        .eq('id', agreementId)
-        .single();
-      if (agreement) {
-        const { data: request } = await supabase
-          .from('requests')
-          .select('student_id')
-          .eq('id', agreement.request_id)
-          .single();
-        const studentEmail = request?.student_id ? await getUserEmail(request.student_id) : null;
-        const consultantEmail = agreement.consultant_id ? await getUserEmail(agreement.consultant_id) : null;
-        const resultText = guilty ? 'found guilty – agreement rejected' : 'found not guilty – agreement completed';
-        const html = `<p>The admin has resolved the appeal: ${resultText}.</p><p>Resolution notes: ${notes}</p>`;
-        if (studentEmail) {
-          await fetch('/api/email/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: studentEmail, subject: 'Appeal resolved', htmlContent: html }),
-          });
-        }
-        if (consultantEmail) {
-          await fetch('/api/email/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: consultantEmail, subject: 'Appeal resolved', htmlContent: html }),
-          });
-        }
+    try {
+      const res = await fetch('/api/admin/resolve-appeal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agreementId, guilty, notes }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Appeal resolved');
+        loadAppealed();
+      } else {
+        alert('Error: ' + (data.error || 'Unknown error'));
       }
-      loadAppealed();
+    } catch (err) {
+      alert('Network error');
     }
   };
 
