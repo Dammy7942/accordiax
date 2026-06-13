@@ -1,6 +1,6 @@
 'use client';
 import { supabase } from '@/lib/supabaseClient';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import { Button } from '@/components/ui/Button';
@@ -100,6 +100,7 @@ export default function StudentDashboard() {
   const [appealEvidence, setAppealEvidence] = useState<File | null>(null);
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
@@ -547,6 +548,11 @@ export default function StudentDashboard() {
       alert('Could not load messages: ' + error.message);
     } else {
       setChatMessages(data || []);
+      setTimeout(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+      }, 100);
     }
     setChatModalOpen(true);
   };
@@ -581,6 +587,11 @@ export default function StudentDashboard() {
           .eq('agreement_id', selectedAgreement.id)
           .order('created_at', { ascending: true });
         setChatMessages(refreshed || []);
+        setTimeout(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          }
+        }, 100);
       }
     } catch (err) {
       console.error(err);
@@ -909,6 +920,7 @@ export default function StudentDashboard() {
     }
 
     const paymentCallback = function(response: any) {
+      console.log('Paystack callback received, reference:', response.reference);
       fetch('/api/paystack/verify', {
         method: 'POST',
         headers: {
@@ -919,15 +931,16 @@ export default function StudentDashboard() {
       })
         .then(res => res.json())
         .then(data => {
+          console.log('Verification response:', data);
           if (data.success) {
             alert('Payment successful! Your agreement is now paid.');
             window.location.reload();
           } else {
-            alert('Payment verification failed. Please contact support.');
+            alert('Payment verification failed: ' + (data.message || 'Please contact support.'));
           }
         })
         .catch(err => {
-          console.error(err);
+          console.error('Verification fetch error:', err);
           alert('Verification error. Please contact support.');
         })
         .finally(() => setPayingAgreement(null));
@@ -1275,7 +1288,7 @@ export default function StudentDashboard() {
       {/* Chat Modal */}
       <Modal isOpen={chatModalOpen} onClose={() => setChatModalOpen(false)} title={`Chat - ${selectedAgreement?.consultant_name || 'Consultant'}`}>
         <div className="h-96 flex flex-col">
-          <div className="flex-1 overflow-y-auto space-y-3 mb-4 p-2 bg-gray-50 rounded-lg">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-3 mb-4 p-2 bg-gray-50 rounded-lg">
             {chatMessages.map((msg) => {
               const isOwn = msg.sender_id === currentUserId;
               return (

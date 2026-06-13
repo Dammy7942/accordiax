@@ -1,6 +1,6 @@
 'use client';
 import { supabase } from '@/lib/supabaseClient';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import { Button } from '@/components/ui/Button';
@@ -96,6 +96,7 @@ export default function ConsultantDashboard() {
   const [appealEvidence, setAppealEvidence] = useState<File | null>(null);
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
@@ -206,6 +207,13 @@ export default function ConsultantDashboard() {
         .eq('consultant_id', user.id)
         .order('created_at', { ascending: false });
 
+      console.log('===== DIAGNOSTIC =====');
+      console.log('Logged consultant ID:', user.id);
+      console.log('Total offers fetched:', allOffers?.length);
+      console.log('Paid offers in raw data:', allOffers?.filter(o => o.status === 'paid').length);
+      console.log('Consultant IDs of paid offers:', allOffers?.filter(o => o.status === 'paid').map(o => o.consultant_id));
+      console.log('All offers with status:', allOffers?.map(o => ({ id: o.id, status: o.status, consultant_id: o.consultant_id })));
+      console.log('======================');
       if (offerError) console.error(offerError);
       else {
         const enriched = (allOffers || []).map((o: any) => ({
@@ -215,7 +223,9 @@ export default function ConsultantDashboard() {
         const pending = enriched.filter((o: any) => o.status === 'pending');
         setPendingOffers(pending);
         setAcceptedOffers(enriched.filter((o: any) => o.status === 'accepted'));
-        setPaidOffers(enriched.filter((o: any) => o.status === 'paid'));
+        const paid = enriched.filter((o: any) => o.status === 'paid' || o.status === 'paid_held');
+        setPaidOffers(paid);
+        console.log('Paid offers:', paid.length);
         setRejectedOffers(enriched.filter((o: any) => o.status === 'rejected'));
         setCompletedOffers(enriched.filter((o: any) => o.status === 'completed'));
         setDeliveredOffers(enriched.filter((o: any) => o.status === 'delivered'));
@@ -319,7 +329,7 @@ export default function ConsultantDashboard() {
         }));
         setPendingOffers(enriched.filter((o: any) => o.status === 'pending'));
         setAcceptedOffers(enriched.filter((o: any) => o.status === 'accepted'));
-        setPaidOffers(enriched.filter((o: any) => o.status === 'paid'));
+        setPaidOffers(enriched.filter((o: any) => o.status === 'paid' || o.status === 'paid_held'));
         setRejectedOffers(enriched.filter((o: any) => o.status === 'rejected'));
         setCompletedOffers(enriched.filter((o: any) => o.status === 'completed'));
         setDeliveredOffers(enriched.filter((o: any) => o.status === 'delivered'));
@@ -330,14 +340,36 @@ export default function ConsultantDashboard() {
   };
 
   const handleMarkDelivered = async (agreementId: string) => {
-    const { error } = await supabase
-      .from('agreements')
-      .update({ status: 'delivered', delivered_at: new Date().toISOString() })
-      .eq('id', agreementId);
-    if (error) alert('Error: ' + error.message);
-    else {
+    console.log('Mark as delivered clicked for agreement:', agreementId);
+    try {
+      const { data, error } = await supabase
+        .from('agreements')
+        .update({ status: 'delivered', delivered_at: new Date().toISOString() })
+        .eq('id', agreementId)
+        .select();
+      console.log('Update response:', { data, error });
+      if (error) {
+        alert('Error marking as delivered: ' + error.message);
+        return;
+      }
+      try {
+        console.log('Sending email request for agreement:', agreementId);
+        const res = await fetch('/api/email/notify-delivered', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agreementId }),
+        });
+        const data = await res.json();
+        console.log('Email API response status:', res.status);
+        console.log('Email API response data:', data);
+      } catch (err) {
+        console.error('Email fetch error:', err);
+      }
       alert('Work marked as delivered. Student will review.');
       window.location.reload();
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      alert('An unexpected error occurred');
     }
   };
 
@@ -495,6 +527,11 @@ export default function ConsultantDashboard() {
       alert('Could not load messages: ' + error.message);
     } else {
       setChatMessages(data || []);
+      setTimeout(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+      }, 100);
     }
     setChatModalOpen(true);
   };
@@ -529,6 +566,11 @@ export default function ConsultantDashboard() {
           .eq('agreement_id', selectedAgreement.id)
           .order('created_at', { ascending: true });
         setChatMessages(refreshed || []);
+        setTimeout(() => {
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          }
+        }, 100);
       }
     } catch (err) {
       console.error(err);
@@ -754,6 +796,8 @@ export default function ConsultantDashboard() {
     setDrawerOpen(false);
   };
 
+  console.log('acceptedOffers length in render:', acceptedOffers.length);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-20">
@@ -884,7 +928,7 @@ export default function ConsultantDashboard() {
               <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Accepted Offers</h2>
               <p className="text-slate-500 text-sm">Offers accepted by students. Awaiting payment.</p>
             </div>
-            {acceptedOffers.length === 0 ? <p className="text-slate-500">No accepted offers.</p> : <div className="space-y-4">{acceptedOffers.map((o) => renderOfferCard(o, false, false))}</div>}
+            {acceptedOffers.length === 0 ? <p className="text-slate-500">No accepted offers.</p> : <div className="space-y-4">{acceptedOffers.map((offer) => renderOfferCard(offer, false, false))}</div>}
           </Card>
         )}
 
@@ -1055,7 +1099,7 @@ export default function ConsultantDashboard() {
       {/* Chat Modal */}
       <Modal isOpen={chatModalOpen} onClose={() => setChatModalOpen(false)} title={`Chat - Student`}>
         <div className="h-96 flex flex-col">
-          <div className="flex-1 overflow-y-auto space-y-3 mb-4 p-2 bg-gray-50 rounded-lg">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-3 mb-4 p-2 bg-gray-50 rounded-lg">
             {chatMessages.map((msg) => {
               const isOwn = msg.sender_id === currentUserId;
               return (
