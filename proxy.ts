@@ -30,7 +30,22 @@ export async function proxy(request: NextRequest) {
   )
 
   // Refresh session if needed – important for server components
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('blocked')
+      .eq('id', user.id)
+      .single();
+    if (profile?.blocked) {
+      await supabase.auth.signOut();
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.searchParams.set('error', 'blocked');
+      return NextResponse.redirect(url);
+    }
+  }
 
   return supabaseResponse
 }

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
+import ReportModal from '@/components/ReportModal';
 import { Input } from '@/components/ui/Input';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 
@@ -65,6 +66,12 @@ export default function StudentDashboard() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'student' | 'consultant' | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<string>('unverified');
+  const [idPhotoPath, setIdPhotoPath] = useState<string | null>(null);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportedUserId, setReportedUserId] = useState('');
+  const [reportAgreementId, setReportAgreementId] = useState<string | undefined>();
   const [profileStats, setProfileStats] = useState<ProfileStats | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
   const [pendingOffers, setPendingOffers] = useState<Agreement[]>([]);
@@ -131,7 +138,7 @@ export default function StudentDashboard() {
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('full_name, role, total_agreements, completed_agreements, disputed_agreements, rejected_agreements, cancelled_agreements')
+        .select('full_name, role, verification_status, id_photo_url, total_agreements, completed_agreements, disputed_agreements, rejected_agreements, cancelled_agreements')
         .eq('id', user.id)
         .single();
 
@@ -142,6 +149,8 @@ export default function StudentDashboard() {
 
       setUserRole(profile.role);
       setUserName(profile?.full_name || user.email || null);
+      setVerificationStatus(profile?.verification_status || 'unverified');
+      setIdPhotoPath(profile?.id_photo_url || null);
       setProfileStats({
         full_name: profile.full_name || '',
         total_agreements: profile.total_agreements || 0,
@@ -186,6 +195,35 @@ export default function StudentDashboard() {
     };
     getUserAndData();
   }, [router]);
+
+  const uploadID = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUserId) return;
+    setUploading(true);
+    const filePath = `identity_documents/${currentUserId}_${Date.now()}`;
+    const { error } = await supabase.storage
+      .from('identity_documents')
+      .upload(filePath, file);
+    if (error) {
+      alert('Upload failed: ' + error.message);
+    } else {
+      await supabase
+        .from('profiles')
+        .update({ id_photo_url: filePath, verification_status: 'pending' })
+        .eq('id', currentUserId);
+      alert('ID submitted for verification.');
+      window.location.reload();
+    }
+    setUploading(false);
+  };
+
+  const previewOwnID = async () => {
+    if (!idPhotoPath) return;
+    const { data } = await supabase.storage
+      .from('identity_documents')
+      .createSignedUrl(idPhotoPath, 60 * 5);
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -878,6 +916,9 @@ export default function StudentDashboard() {
             <Button variant="outline" size="sm" onClick={() => openRatingModal(agreement)}>Rate Consultant</Button>
           </div>
         )}
+        <div className="pt-1">
+          <Button variant="outline" size="sm" onClick={() => { setReportModalOpen(true); setReportedUserId((agreement as any).consultant_id || ''); setReportAgreementId(agreement.id); }}>Report</Button>
+        </div>
       </div>
     </div>
   );
@@ -1078,6 +1119,21 @@ export default function StudentDashboard() {
                   <p className="text-xs text-slate-600">Based on {profileStats.total_agreements} total agreements | {profileStats.completed_agreements} completed | {profileStats.disputed_agreements} disputes | {profileStats.cancelled_agreements} cancelled</p>
                 </div>
               )}
+              <div className="mt-4 p-4 bg-white rounded-lg border">
+                <h3 className="font-semibold">Identity Verification</h3>
+                <p className="text-sm text-gray-500">Upload a government-issued ID to build trust.</p>
+                {verificationStatus === 'verified' && <span className="text-green-600 text-sm">✅ Verified</span>}
+                {verificationStatus === 'pending' && <span className="text-yellow-600 text-sm">⏳ Pending review</span>}
+                {verificationStatus === 'rejected' && <span className="text-red-600 text-sm">❌ Rejected – please upload again</span>}
+                <div className="mt-2">
+                  {verificationStatus !== 'pending' && verificationStatus !== 'verified' && (
+                    <input type="file" accept="image/*" onChange={uploadID} disabled={uploading} className="mt-2 block" />
+                  )}
+                  {idPhotoPath && (
+                    <button onClick={previewOwnID} className="text-blue-600 text-sm underline ml-2">Preview my ID</button>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {statCards.map((card) => (
@@ -1349,6 +1405,13 @@ export default function StudentDashboard() {
           <Button onClick={submitRating} className="w-full">Submit Rating</Button>
         </div>
       </Modal>
+
+      <ReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        reportedUserId={reportedUserId}
+        agreementId={reportAgreementId}
+      />
     </div>
   );
 }
