@@ -90,6 +90,7 @@ export default function StudentDashboard() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
 
   // Dispute, appeal, chat state
   const [disputeModalOpen, setDisputeModalOpen] = useState(false);
@@ -124,7 +125,9 @@ export default function StudentDashboard() {
   const [submittingProposal, setSubmittingProposal] = useState(false);
 
   useEffect(() => {
-    validateFlutterwaveKeys();
+    if (typeof window !== 'undefined') {
+      validateFlutterwaveKeys();
+    }
   }, []);
 
   useEffect(() => {
@@ -247,11 +250,12 @@ export default function StudentDashboard() {
       return;
     }
 
+    const categoryToSubmit = formData.category === 'other' ? customCategory : formData.category;
     const { error: insertError } = await supabase.from('requests').insert({
       student_id: user.id,
       title: formData.title,
       description: formData.description,
-      category: formData.category,
+      category: categoryToSubmit,
       budget_range: formData.budget_range || null,
       status: 'open',
     });
@@ -261,6 +265,7 @@ export default function StudentDashboard() {
     } else {
       setShowModal(false);
       setFormData({ title: '', description: '', category: 'project_supervision', budget_range: '' });
+      setCustomCategory('');
       const { data: newReqs } = await supabase
         .from('requests')
         .select('*')
@@ -1229,19 +1234,45 @@ export default function StudentDashboard() {
       </main>
 
       {/* New Request Modal */}
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Create a new request">
+      <Modal isOpen={showModal} onClose={() => { setShowModal(false); setCustomCategory(''); }} title="Create a new request">
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input name="title" placeholder="Title" value={formData.title} onChange={handleChange} required />
           <textarea name="description" placeholder="Describe your needs..." className="w-full px-4 py-2 border border-slate-300 rounded-xl" rows={3} value={formData.description} onChange={handleChange} required />
-          <select name="category" className="w-full px-4 py-2 border border-slate-300 rounded-xl" value={formData.category} onChange={handleChange}>
-            <option value="project_supervision">Project Supervision</option>
-            <option value="admission_guidance">Admission Guidance</option>
-            <option value="assignment_support">Assignment Support</option>
-          </select>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-700">Category</label>
+            <select
+              name="category"
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+              value={formData.category}
+              onChange={(e) => {
+                const value = e.target.value;
+                setFormData({ ...formData, category: value });
+                if (value !== 'other') {
+                  setCustomCategory('');
+                }
+              }}
+            >
+              <option value="project_supervision">Project Supervision</option>
+              <option value="admission_guidance">Admission Guidance</option>
+              <option value="assignment_support">Assignment Support</option>
+              <option value="other">Other (specify below)</option>
+            </select>
+            {formData.category === 'other' && (
+              <input
+                type="text"
+                placeholder="Enter your custom category"
+                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                value={customCategory}
+                onChange={(e) => {
+                  setCustomCategory(e.target.value);
+                }}
+              />
+            )}
+          </div>
           <Input name="budget_range" placeholder="Budget range (optional)" value={formData.budget_range} onChange={handleChange} />
           {error && <p className="text-red-600 text-sm">{error}</p>}
           <div className="flex gap-3">
-            <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => { setShowModal(false); setCustomCategory(''); }}>Cancel</Button>
             <Button type="submit" loading={submitting}>Post Request</Button>
           </div>
         </form>
