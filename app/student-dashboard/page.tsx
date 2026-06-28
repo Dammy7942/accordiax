@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useFlutterwave, closePaymentModal } from 'flutterwave-react-v3';
+import { validateFlutterwaveKeys } from '@/lib/flutterwave';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -51,12 +53,6 @@ interface ProfileStats {
   disputed_agreements: number;
   rejected_agreements: number;
   cancelled_agreements: number;
-}
-
-declare global {
-  interface Window {
-    PaystackPop: any;
-  }
 }
 
 type TabType = 'overview' | 'pending' | 'accepted' | 'paid' | 'delivered' | 'rejected' | 'completed' | 'myrequests';
@@ -109,6 +105,7 @@ export default function StudentDashboard() {
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const activeAgreementIdRef = useRef<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
@@ -125,6 +122,10 @@ export default function StudentDashboard() {
   const [selectedPendingForProposal, setSelectedPendingForProposal] = useState<Agreement | null>(null);
   const [proposedPriceInput, setProposedPriceInput] = useState('');
   const [submittingProposal, setSubmittingProposal] = useState(false);
+
+  useEffect(() => {
+    validateFlutterwaveKeys();
+  }, []);
 
   useEffect(() => {
     const getUserAndData = async () => {
@@ -729,6 +730,81 @@ export default function StudentDashboard() {
     return Math.round((completed / total) * 100);
   };
 
+  const flutterwaveConfig = {
+    public_key: process.env.NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY!,
+    tx_ref: '',
+    amount: 0,
+    currency: 'NGN',
+    payment_options: 'card, banktransfer, ussd, mobilemoneyng',
+    customer: {
+      email: userEmail || '',
+      phone_number: '',
+      name: userName || 'Customer',
+    },
+    customizations: {
+      title: 'Accordiax Payment',
+      description: 'Secure payment for your agreement',
+      logo: 'https://accordiax.vercel.app/logo.png',
+    },
+  };
+
+  const initiatePayment = useFlutterwave(flutterwaveConfig);
+
+  const handlePay = (agreement: Agreement) => {
+    if (!userEmail) {
+      alert('User email not found. Please log in again.');
+      return;
+    }
+    if (!process.env.NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY) {
+      alert('Flutterwave public key is missing. Please contact support.');
+      return;
+    }
+    setPayingAgreement(agreement.id);
+    activeAgreementIdRef.current = agreement.id;
+    flutterwaveConfig.tx_ref = `ACC-${agreement.id}-${Date.now()}`;
+    flutterwaveConfig.amount = agreement.price;
+    flutterwaveConfig.customer.email = userEmail;
+    flutterwaveConfig.customer.name = userName || 'Customer';
+    initiatePayment({
+      callback: async (response) => {
+        console.log('📦 Flutterwave callback received:', response);
+        if (response.status === 'successful' || response.status === 'completed') {
+          console.log('✅ Payment successful, verifying with server...');
+          try {
+            const verifyRes = await fetch('/api/flutterwave/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                transaction_id: response.transaction_id,
+                agreementId: activeAgreementIdRef.current,
+              }),
+            });
+            const data = await verifyRes.json();
+            console.log('📡 Verification response:', data);
+            if (data.success) {
+              alert('Payment successful!');
+              window.location.reload();
+            } else {
+              alert('Payment verification failed: ' + (data.error || 'Please contact support.'));
+            }
+          } catch (err) {
+            console.error('❌ Verification error:', err);
+            alert('Verification error. Please contact support.');
+          }
+        } else {
+          console.log('❌ Payment not successful, status:', response.status);
+          alert('Payment was not successful. Please try again.');
+        }
+        closePaymentModal();
+        setPayingAgreement(null);
+      },
+      onClose: () => {
+        console.log('❌ Payment modal closed by user');
+        setPayingAgreement(null);
+      },
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -938,79 +1014,6 @@ export default function StudentDashboard() {
     </div>
   );
 
-  const handlePay = async (agreement: Agreement) => {
-    for (let i = 0; i < 30; i++) {
-      if (window.PaystackPop) break;
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    if (!window.PaystackPop) {
-      alert('Payment system not loaded. Please refresh the page and try again.');
-      return;
-    }
-    if (!userEmail) {
-      alert('User email not found. Please log in again.');
-      return;
-    }
-    const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    if (!publicKey) {
-      alert('Paystack public key is missing. Please contact support.');
-      return;
-    }
-    setPayingAgreement(agreement.id);
-
-    const { data: { session } } = await supabase.auth.getSession();
-    const accessToken = session?.access_token;
-    if (!accessToken) {
-      alert('You need to be logged in to make a payment.');
-      setPayingAgreement(null);
-      return;
-    }
-
-    const paymentCallback = function(response: any) {
-      console.log('Paystack callback received, reference:', response.reference);
-      fetch('/api/paystack/verify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ reference: response.reference, agreementId: agreement.id }),
-      })
-        .then(res => res.json())
-        .then(data => {
-          console.log('Verification response:', data);
-          if (data.success) {
-            alert('Payment successful! Your agreement is now paid.');
-            window.location.reload();
-          } else {
-            alert('Payment verification failed: ' + (data.message || 'Please contact support.'));
-          }
-        })
-        .catch(err => {
-          console.error('Verification fetch error:', err);
-          alert('Verification error. Please contact support.');
-        })
-        .finally(() => setPayingAgreement(null));
-    };
-
-    try {
-      const handler = window.PaystackPop.setup({
-        key: publicKey,
-        email: userEmail,
-        amount: agreement.price * 100,
-        currency: 'NGN',
-        ref: `ACC-${agreement.id}-${Date.now()}`,
-        callback: paymentCallback,
-        onClose: function() { setPayingAgreement(null); },
-      });
-      handler.openIframe();
-    } catch (err) {
-      console.error(err);
-      alert('Unable to initialise payment. Please try again.');
-      setPayingAgreement(null);
-    }
-  };
-
   const tabs = [
     { key: 'overview', label: 'Overview' },
     { key: 'myrequests', label: `My Requests (${getCountForTab('myrequests')})` },
@@ -1174,7 +1177,7 @@ export default function StudentDashboard() {
           <Card>
             <div className="mb-4">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Ready for Payment</h2>
-              <p className="text-slate-500 text-sm">Accepted agreements waiting for payment via Paystack.</p>
+              <p className="text-slate-500 text-sm">Accepted agreements waiting for payment.</p>
             </div>
             {acceptedAgreements.length === 0 ? <p className="text-slate-500">No accepted agreements awaiting payment.</p> : <div className="space-y-4">{acceptedAgreements.map((ag) => renderAgreementCard(ag, true))}</div>}
           </Card>
