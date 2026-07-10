@@ -3,6 +3,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { BrandedLoader } from '@/components/BrandedLoader';
 
 export default function AuthRedirect() {
   const router = useRouter();
@@ -10,7 +11,6 @@ export default function AuthRedirect() {
 
   useEffect(() => {
     const handleRedirect = async () => {
-      // Wait a moment for the cookie to be fully set
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const { data: { user }, error } = await supabase.auth.getUser();
@@ -19,7 +19,6 @@ export default function AuthRedirect() {
         return;
       }
 
-      // Fetch profile
       const { data: profile } = await supabase
         .from('profiles')
         .select('role, full_name, phone, university, expertise')
@@ -52,9 +51,5 @@ export default function AuthRedirect() {
     }
   }, [router, checked]);
 
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-    </div>
-  );
+  return <BrandedLoader message="Signing you in..." />;
 }

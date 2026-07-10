@@ -3,13 +3,13 @@
 import { supabase } from '@/lib/supabaseClient';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { BrandedLoader } from '@/components/BrandedLoader';
 
 export default function CallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
     const handleCallback = async () => {
-      // Wait a moment for the Supabase client to process the URL fragment
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const { data: { session } } = await supabase.auth.getSession();
@@ -45,9 +45,5 @@ export default function CallbackPage() {
     handleCallback();
   }, [router]);
 
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-    </div>
-  );
+  return <BrandedLoader message="Signing you in..." />;
 }
