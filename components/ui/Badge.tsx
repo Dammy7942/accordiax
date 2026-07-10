@@ -1,5 +1,5 @@
 interface BadgeProps {
-  status: 'pending' | 'accepted' | 'rejected' | 'open' | 'matched' | 'paid' | 'completed' | 'delivered' | 'disputed';
+  status: 'pending' | 'accepted' | 'rejected' | 'open' | 'matched' | 'paid' | 'completed' | 'delivered' | 'disputed' | 'appealed' | 'cancelled';
   children?: React.ReactNode;
 }
 
@@ -13,6 +13,8 @@ const statusConfig = {
   completed: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Completed' },
   delivered: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Delivered' },
   disputed: { bg: 'bg-red-100', text: 'text-red-800', label: 'Disputed' },
+  appealed: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Appealed' },
+  cancelled: { bg: 'bg-slate-100', text: 'text-slate-600', label: 'Cancelled' },
 };
 
 export const Badge = ({ status }: BadgeProps) => {

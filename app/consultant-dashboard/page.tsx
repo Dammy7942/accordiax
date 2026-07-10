@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import ReportModal from '@/components/ReportModal';
 import { Input } from '@/components/ui/Input';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import { StatCardSkeleton } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { useToast, ToastContainer } from '@/components/ui/Toast';
 
 interface Request {
   id: string;
@@ -56,6 +58,30 @@ interface ProfileStats {
 
 type TabType = 'overview' | 'open' | 'pending' | 'accepted' | 'paid' | 'delivered' | 'disputed' | 'rejected' | 'completed';
 
+const ChatIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+  </svg>
+);
+
+const StarIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+  </svg>
+);
+
+const RatingsStarIcon = () => (
+  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+  </svg>
+);
+
+const SignOutIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+  </svg>
+);
+
 export default function ConsultantDashboard() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -92,7 +118,6 @@ export default function ConsultantDashboard() {
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Dispute, appeal, chat state
   const [disputeModalOpen, setDisputeModalOpen] = useState(false);
   const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -112,13 +137,13 @@ export default function ConsultantDashboard() {
   const [ratingForAgreement, setRatingForAgreement] = useState<Agreement | null>(null);
   const [ratingValue, setRatingValue] = useState(0);
 
-  // Price negotiation state (consultant-initiated)
   const [priceProposalModalOpen, setPriceProposalModalOpen] = useState(false);
   const [selectedAgreementForPrice, setSelectedAgreementForPrice] = useState<Agreement | null>(null);
   const [proposedPrice, setProposedPrice] = useState('');
   const [submittingPrice, setSubmittingPrice] = useState(false);
 
-  // Student-initiated price proposal (consultant side)
+  const { toasts, toast, dismiss } = useToast();
+
   const [pendingProposal, setPendingProposal] = useState<Agreement | null>(null);
   const [showProposalModal, setShowProposalModal] = useState(false);
 
@@ -159,14 +184,12 @@ export default function ConsultantDashboard() {
         cancelled_agreements: profile.cancelled_agreements || 0,
       });
 
-      // First, get request IDs where this consultant already has an agreement
       const { data: existingAgreements } = await supabase
         .from('agreements')
         .select('request_id')
         .eq('consultant_id', user.id);
       const excludedRequestIds = new Set((existingAgreements || []).map(a => a.request_id));
 
-      // Then fetch all open requests
       const { data: openRaw, error: openError } = await supabase
         .from('requests')
         .select(`
@@ -193,7 +216,6 @@ export default function ConsultantDashboard() {
         setOpenRequests(mapped);
       }
 
-      // Consultant's offers with request title
       const { data: allOffers, error: offerError } = await supabase
         .from('agreements')
         .select(`
@@ -223,8 +245,8 @@ export default function ConsultantDashboard() {
       console.log('Logged consultant ID:', user.id);
       console.log('Total offers fetched:', allOffers?.length);
       console.log('Paid offers in raw data:', allOffers?.filter(o => o.status === 'paid').length);
-
       console.log('======================');
+
       if (offerError) console.error(offerError);
       else {
         const enriched = (allOffers || []).map((o: any) => ({
@@ -259,27 +281,20 @@ export default function ConsultantDashboard() {
     if (!file || !currentUserId) return;
     setUploading(true);
     const filePath = `identity_documents/${currentUserId}_${Date.now()}`;
-    const { error } = await supabase.storage
-      .from('identity_documents')
-      .upload(filePath, file);
+    const { error } = await supabase.storage.from('identity_documents').upload(filePath, file);
     if (error) {
-      alert('Upload failed: ' + error.message);
+      toast('Upload failed: ' + error.message, 'error');
     } else {
-      await supabase
-        .from('profiles')
-        .update({ id_photo_url: filePath, verification_status: 'pending' })
-        .eq('id', currentUserId);
-      alert('ID submitted for verification.');
-      window.location.reload();
+      await supabase.from('profiles').update({ id_photo_url: filePath, verification_status: 'pending' }).eq('id', currentUserId);
+      toast('ID submitted for verification.', 'success');
+      setTimeout(() => window.location.reload(), 1200);
     }
     setUploading(false);
   };
 
   const previewOwnID = async () => {
     if (!idPhotoPath) return;
-    const { data } = await supabase.storage
-      .from('identity_documents')
-      .createSignedUrl(idPhotoPath, 60 * 5);
+    const { data } = await supabase.storage.from('identity_documents').createSignedUrl(idPhotoPath, 60 * 5);
     if (data?.signedUrl) window.open(data.signedUrl, '_blank');
   };
 
@@ -298,32 +313,20 @@ export default function ConsultantDashboard() {
     setOfferForm({ ...offerForm, [e.target.name]: e.target.value });
   };
 
-  const submitOffer = async (e: React.FormEvent) => {
+  const submitOffer = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedRequest) return;
     setSubmitting(true);
     setError('');
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setError('You must be logged in');
-      setSubmitting(false);
-      return;
-    }
+    if (!user) { setError('You must be logged in'); setSubmitting(false); return; }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single();
+    const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
     const consultantName = profile?.full_name || 'Unknown Consultant';
 
     const priceNum = parseInt(offerForm.price, 10);
-    if (isNaN(priceNum)) {
-      setError('Price must be a number');
-      setSubmitting(false);
-      return;
-    }
+    if (isNaN(priceNum)) { setError('Price must be a number'); setSubmitting(false); return; }
 
     const { error: insertError } = await supabase.from('agreements').insert({
       request_id: selectedRequest.id,
@@ -340,8 +343,7 @@ export default function ConsultantDashboard() {
       setError(insertError.message);
     } else {
       setShowModal(false);
-      alert('Offer sent to student!');
-      // Refresh offers
+      toast('Offer sent to the student!', 'success');
       const { data: newOffers } = await supabase
         .from('agreements')
         .select(`
@@ -388,10 +390,7 @@ export default function ConsultantDashboard() {
         .eq('id', agreementId)
         .select();
       console.log('Update response:', { data, error });
-      if (error) {
-        alert('Error marking as delivered: ' + error.message);
-        return;
-      }
+      if (error) { toast('Error marking as delivered: ' + error.message, 'error'); return; }
       try {
         console.log('Sending email request for agreement:', agreementId);
         const res = await fetch('/api/email/notify-delivered', {
@@ -402,66 +401,52 @@ export default function ConsultantDashboard() {
         const data = await res.json();
         console.log('Email API response status:', res.status);
         console.log('Email API response data:', data);
-      } catch (err) {
-        console.error('Email fetch error:', err);
-      }
-      alert('Work marked as delivered. Student will review.');
-      window.location.reload();
+      } catch (err) { console.error('Email fetch error:', err); }
+      toast('Work marked as delivered. The student will review.', 'success');
+      setTimeout(() => window.location.reload(), 1200);
     } catch (err) {
       console.error('Unexpected error:', err);
-      alert('An unexpected error occurred');
+      toast('An unexpected error occurred', 'error');
     }
   };
 
   const handleDispute = (agreement: Agreement) => {
     setSelectedAgreement(agreement);
-    setDisputeReason('');
-    setDisputeDetails('');
-    setDisputeEvidence(null);
+    setDisputeReason(''); setDisputeDetails(''); setDisputeEvidence(null);
     setDisputeModalOpen(true);
   };
 
   const submitDispute = async () => {
     if (!selectedAgreement) return;
-    if (!disputeReason) {
-      alert('Please select a reason for dispute');
-      return;
-    }
+    if (!disputeReason) { toast('Please select a reason for dispute', 'error'); return; }
     setActionLoading(selectedAgreement.id);
     let evidenceUrl = null;
     if (disputeEvidence) {
       const fileExt = disputeEvidence.name.split('.').pop();
       const fileName = `${selectedAgreement.id}_${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from('dispute_evidence')
-        .upload(fileName, disputeEvidence);
+      const { error: uploadError } = await supabase.storage.from('dispute_evidence').upload(fileName, disputeEvidence);
       if (uploadError) console.error('Upload error:', uploadError);
       else {
-        const { data: publicUrl } = supabase.storage
-          .from('dispute_evidence')
-          .getPublicUrl(fileName);
+        const { data: publicUrl } = supabase.storage.from('dispute_evidence').getPublicUrl(fileName);
         evidenceUrl = publicUrl.publicUrl;
       }
     }
-    const { error } = await supabase
-      .from('agreements')
-      .update({
-        status: 'disputed',
-        dispute_reason: disputeReason,
-        dispute_details: disputeDetails + (evidenceUrl ? `\nEvidence: ${evidenceUrl}` : ''),
-        dispute_raised_by: (await supabase.auth.getUser()).data.user?.id,
-        dispute_raised_at: new Date().toISOString(),
-      })
-      .eq('id', selectedAgreement.id);
-    if (error) alert('Error: ' + error.message);
+    const { error } = await supabase.from('agreements').update({
+      status: 'disputed',
+      dispute_reason: disputeReason,
+      dispute_details: disputeDetails + (evidenceUrl ? `\nEvidence: ${evidenceUrl}` : ''),
+      dispute_raised_by: (await supabase.auth.getUser()).data.user?.id,
+      dispute_raised_at: new Date().toISOString(),
+    }).eq('id', selectedAgreement.id);
+    if (error) { toast('Error: ' + error.message, 'error'); }
     else {
-      alert('Dispute raised. Admin will be notified.');
+      toast('Dispute raised. Admin will be notified.', 'success');
       await supabase.from('agreement_messages').insert({
         agreement_id: selectedAgreement.id,
         sender_id: (await supabase.auth.getUser()).data.user?.id,
         message: `🚨 DISPUTE RAISED: ${disputeReason}. ${disputeDetails || 'No details provided.'}`,
       });
-      window.location.reload();
+      setTimeout(() => window.location.reload(), 1200);
     }
     setDisputeModalOpen(false);
     setActionLoading(null);
@@ -469,109 +454,71 @@ export default function ConsultantDashboard() {
 
   const handleAppeal = (agreement: Agreement) => {
     setSelectedAgreement(agreement);
-    setAppealReason('');
-    setAppealDetails('');
-    setAppealEvidence(null);
+    setAppealReason(''); setAppealDetails(''); setAppealEvidence(null);
     setAppealModalOpen(true);
   };
 
   const submitAppeal = async () => {
     if (!selectedAgreement) return;
-    if (!appealReason) {
-      alert('Please provide an appeal reason');
-      return;
-    }
+    if (!appealReason) { toast('Please provide an appeal reason', 'error'); return; }
     setActionLoading(selectedAgreement.id);
     let evidenceUrl = null;
     if (appealEvidence) {
       const fileExt = appealEvidence.name.split('.').pop();
       const fileName = `${selectedAgreement.id}_appeal_${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from('dispute_evidence')
-        .upload(fileName, appealEvidence);
+      const { error: uploadError } = await supabase.storage.from('dispute_evidence').upload(fileName, appealEvidence);
       if (!uploadError) {
-        const { data: publicUrl } = supabase.storage
-          .from('dispute_evidence')
-          .getPublicUrl(fileName);
+        const { data: publicUrl } = supabase.storage.from('dispute_evidence').getPublicUrl(fileName);
         evidenceUrl = publicUrl.publicUrl;
       }
     }
-    const { error } = await supabase
-      .from('agreements')
-      .update({
-        status: 'appealed',
-        appeal_reason: appealReason,
-        appeal_details: appealDetails + (evidenceUrl ? `\nEvidence: ${evidenceUrl}` : ''),
-        appeal_raised_by: (await supabase.auth.getUser()).data.user?.id,
-        appeal_raised_at: new Date().toISOString(),
-      })
-      .eq('id', selectedAgreement.id);
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Appeal submitted. Admin will review.');
-      window.location.reload();
-    }
+    const { error } = await supabase.from('agreements').update({
+      status: 'appealed',
+      appeal_reason: appealReason,
+      appeal_details: appealDetails + (evidenceUrl ? `\nEvidence: ${evidenceUrl}` : ''),
+      appeal_raised_by: (await supabase.auth.getUser()).data.user?.id,
+      appeal_raised_at: new Date().toISOString(),
+    }).eq('id', selectedAgreement.id);
+    if (error) { toast('Error: ' + error.message, 'error'); }
+    else { toast('Appeal submitted. Admin will review shortly.', 'success'); setTimeout(() => window.location.reload(), 1200); }
     setAppealModalOpen(false);
     setActionLoading(null);
   };
 
   const acceptStudentProposal = async () => {
     if (!pendingProposal) return;
-    const { error } = await supabase
-      .from('agreements')
-      .update({
-        price: pendingProposal.proposed_price,
-        proposed_price: null,
-        price_proposed_at: null,
-        price_proposed_by: null
-      })
-      .eq('id', pendingProposal.id);
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Price updated! Student can now accept the offer at the new price.');
-      window.location.reload();
-    }
+    const { error } = await supabase.from('agreements').update({
+      price: pendingProposal.proposed_price,
+      proposed_price: null,
+      price_proposed_at: null,
+      price_proposed_by: null,
+    }).eq('id', pendingProposal.id);
+    if (error) { toast('Error: ' + error.message, 'error'); }
+    else { toast('Price updated. The student can now accept the offer at the new price.', 'success'); setTimeout(() => window.location.reload(), 1200); }
   };
 
   const declineStudentProposal = async () => {
     if (!pendingProposal) return;
-    const { error } = await supabase
-      .from('agreements')
-      .update({
-        proposed_price: null,
-        price_proposed_at: null,
-        price_proposed_by: null
-      })
-      .eq('id', pendingProposal.id);
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Proposal declined. Original price remains.');
-      window.location.reload();
-    }
+    const { error } = await supabase.from('agreements').update({
+      proposed_price: null,
+      price_proposed_at: null,
+      price_proposed_by: null,
+    }).eq('id', pendingProposal.id);
+    if (error) { toast('Error: ' + error.message, 'error'); }
+    else { toast('Proposal declined. The original price remains.', 'info'); setTimeout(() => window.location.reload(), 1200); }
   };
 
   const openChat = async (agreement: Agreement) => {
     setSelectedAgreement(agreement);
     const { data, error } = await supabase
       .from('agreement_messages')
-      .select(`
-        *,
-        sender:sender_id (
-          full_name
-        )
-      `)
+      .select('*, sender:sender_id ( full_name )')
       .eq('agreement_id', agreement.id)
       .order('created_at', { ascending: true });
-    if (error) {
-      console.error('Chat fetch error:', error);
-      alert('Could not load messages: ' + error.message);
-    } else {
+    if (error) { console.error('Chat fetch error:', error); toast('Could not load messages: ' + error.message, 'error'); }
+    else {
       setChatMessages(data || []);
-      setTimeout(() => {
-        if (chatContainerRef.current) {
-          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        }
-      }, 100);
+      setTimeout(() => { if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; }, 100);
     }
     setChatModalOpen(true);
   };
@@ -581,108 +528,54 @@ export default function ConsultantDashboard() {
     setSendingMessage(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        alert('You must be logged in to send messages');
-        return;
-      }
-      const { error } = await supabase.from('agreement_messages').insert({
-        agreement_id: selectedAgreement.id,
-        sender_id: user.id,
-        message: newMessage.trim(),
-      });
-      if (error) {
-        console.error('Send error:', error);
-        alert('Failed to send message: ' + error.message);
-      } else {
+      if (!user) { toast('You must be logged in to send messages', 'error'); return; }
+      const { error } = await supabase.from('agreement_messages').insert({ agreement_id: selectedAgreement.id, sender_id: user.id, message: newMessage.trim() });
+      if (error) { console.error('Send error:', error); toast('Failed to send message: ' + error.message, 'error'); }
+      else {
         setNewMessage('');
-        const { data: refreshed } = await supabase
-          .from('agreement_messages')
-          .select(`
-            *,
-            sender:sender_id (
-              full_name
-            )
-          `)
-          .eq('agreement_id', selectedAgreement.id)
-          .order('created_at', { ascending: true });
+        const { data: refreshed } = await supabase.from('agreement_messages').select('*, sender:sender_id ( full_name )').eq('agreement_id', selectedAgreement.id).order('created_at', { ascending: true });
         setChatMessages(refreshed || []);
-        setTimeout(() => {
-          if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-          }
-        }, 100);
+        setTimeout(() => { if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; }, 100);
       }
-    } catch (err) {
-      console.error(err);
-      alert('An error occurred while sending');
-    } finally {
-      setSendingMessage(false);
-    }
+    } catch (err) { console.error(err); toast('An error occurred while sending', 'error'); }
+    finally { setSendingMessage(false); }
   };
 
-  const openRatingModal = (agreement: Agreement) => {
-    setRatingForAgreement(agreement);
-    setRatingValue(0);
-    setRatingModalOpen(true);
-  };
+  const openRatingModal = (agreement: Agreement) => { setRatingForAgreement(agreement); setRatingValue(0); setRatingModalOpen(true); };
 
   const submitRating = async () => {
     if (!ratingForAgreement || ratingValue === 0) return;
-    const { error } = await supabase
-      .from('agreements')
-      .update({ rating_given: true, rating: ratingValue })
-      .eq('id', ratingForAgreement.id);
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert(`Thank you for rating ${ratingValue} stars!`);
-      setRatingModalOpen(false);
-      window.location.reload();
-    }
+    const { error } = await supabase.from('agreements').update({ rating_given: true, rating: ratingValue }).eq('id', ratingForAgreement.id);
+    if (error) { toast('Error: ' + error.message, 'error'); }
+    else { toast(`Thank you for rating ${ratingValue} stars!`, 'success'); setRatingModalOpen(false); setTimeout(() => window.location.reload(), 1200); }
   };
 
   const proposeNewPrice = async () => {
     if (!selectedAgreementForPrice || !proposedPrice) return;
     setSubmittingPrice(true);
     const priceNum = parseInt(proposedPrice, 10);
-    if (isNaN(priceNum)) {
-      alert('Please enter a valid amount');
-      setSubmittingPrice(false);
-      return;
-    }
+    if (isNaN(priceNum)) { toast('Please enter a valid amount', 'error'); setSubmittingPrice(false); return; }
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      alert('You must be logged in');
-      setSubmittingPrice(false);
-      return;
-    }
-    const { error } = await supabase
-      .from('agreements')
-      .update({
-        proposed_price: priceNum,
-        price_proposed_at: new Date().toISOString(),
-        price_proposed_by: user.id
-      })
-      .eq('id', selectedAgreementForPrice.id);
-    if (error) {
-      alert('Error proposing price: ' + error.message);
-    } else {
-      alert('Price proposed! Student will see the offer and can accept/decline.');
-      window.location.reload();
+    if (!user) { toast('You must be logged in', 'error'); setSubmittingPrice(false); return; }
+    const { error } = await supabase.from('agreements').update({
+      proposed_price: priceNum,
+      price_proposed_at: new Date().toISOString(),
+      price_proposed_by: user.id,
+    }).eq('id', selectedAgreementForPrice.id);
+    if (error) { toast('Error proposing price: ' + error.message, 'error'); }
+    else {
+      toast('Price proposed. The student will see your offer and can accept or decline.', 'success');
+      setTimeout(() => window.location.reload(), 1200);
     }
     setSubmittingPrice(false);
     setPriceProposalModalOpen(false);
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  };
+  const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
   const calculateCompletionRate = () => {
     if (!profileStats) return 0;
-    const total = profileStats.total_agreements || 1;
-    const completed = profileStats.completed_agreements || 0;
-    return Math.round((completed / total) * 100);
+    return Math.round(((profileStats.completed_agreements || 0) / (profileStats.total_agreements || 1)) * 100);
   };
 
   const canRaiseDispute = (agreement: Agreement) => {
@@ -695,85 +588,143 @@ export default function ConsultantDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      <div className="min-h-screen bg-slate-50 lg:flex">
+        <div className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-200 fixed inset-y-0 left-0">
+          <div className="px-6 h-16 border-b border-slate-100 flex items-center">
+            <div className="h-5 w-28 bg-slate-200 rounded animate-pulse" />
+          </div>
+          <div className="px-4 py-5 border-b border-slate-100 flex items-center gap-3">
+            <div className="w-10 h-10 bg-slate-200 rounded-xl animate-pulse shrink-0" />
+            <div className="space-y-1.5 flex-1">
+              <div className="h-3.5 w-28 bg-slate-200 rounded animate-pulse" />
+              <div className="h-3 w-36 bg-slate-200 rounded animate-pulse" />
+            </div>
+          </div>
+          <div className="px-3 py-4 space-y-1">
+            {[...Array(9)].map((_, i) => <div key={i} className="h-9 bg-slate-100 rounded-xl animate-pulse" />)}
+          </div>
+        </div>
+        <div className="flex-1 lg:pl-64">
+          <div className="h-16 bg-white border-b border-slate-200 flex items-center px-6">
+            <div className="h-5 w-32 bg-slate-200 rounded animate-pulse" />
+          </div>
+          <div className="p-4 sm:p-6 lg:p-8 space-y-5 max-w-4xl mx-auto">
+            <div className="bg-gradient-to-br from-violet-600 to-indigo-700 rounded-2xl h-40 animate-pulse opacity-30" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+              {[...Array(8)].map((_, i) => <StatCardSkeleton key={i} />)}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
-  const statCards = [
-    { label: 'Open Requests', value: openRequests.length, color: '#F59E0B', tab: 'open' },
-    { label: 'Pending Offers', value: pendingOffers.length, color: '#FCD34D', tab: 'pending' },
-    { label: 'Accepted Offers', value: acceptedOffers.length, color: '#5EEAD4', tab: 'accepted' },
-    { label: 'Paid Offers', value: paidOffers.length, color: '#A78BFA', tab: 'paid' },
-    { label: 'Delivered', value: deliveredOffers.length, color: '#60A5FA', tab: 'delivered' },
-    { label: 'Disputed', value: disputedOffers.length, color: '#F97316', tab: 'disputed' },
-    { label: 'Rejected Offers', value: rejectedOffers.length, color: '#F87171', tab: 'rejected' },
-    { label: 'Completed', value: completedOffers.length, color: '#34D399', tab: 'completed' },
+  const sidebarTabs: Array<{ key: TabType; label: string; count: number; icon: React.ReactNode }> = [
+    { key: 'overview', label: 'Overview', count: 0, icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
+    { key: 'open', label: 'Open Requests', count: openRequests.length, icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> },
+    { key: 'pending', label: 'Pending Offers', count: pendingOffers.length, icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+    { key: 'accepted', label: 'Accepted Offers', count: acceptedOffers.length, icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+    { key: 'paid', label: 'Paid', count: paidOffers.length, icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
+    { key: 'delivered', label: 'Delivered', count: deliveredOffers.length, icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg> },
+    { key: 'disputed', label: 'Disputed', count: disputedOffers.length, icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg> },
+    { key: 'rejected', label: 'Rejected', count: rejectedOffers.length, icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+    { key: 'completed', label: 'Completed', count: completedOffers.length, icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
   ];
 
-  const getCountForTab = (tab: string): number => {
-    if (tab === 'open') return openRequests.length;
-    if (tab === 'pending') return pendingOffers.length;
-    if (tab === 'accepted') return acceptedOffers.length;
-    if (tab === 'paid') return paidOffers.length;
-    if (tab === 'delivered') return deliveredOffers.length;
-    if (tab === 'disputed') return disputedOffers.length;
-    if (tab === 'rejected') return rejectedOffers.length;
-    if (tab === 'completed') return completedOffers.length;
-    return 0;
+  const statCards = [
+    { label: 'Open Requests', value: openRequests.length, bgClass: 'bg-blue-50', iconClass: 'text-blue-500', tab: 'open', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> },
+    { label: 'Pending Offers', value: pendingOffers.length, bgClass: 'bg-amber-50', iconClass: 'text-amber-500', tab: 'pending', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+    { label: 'Accepted Offers', value: acceptedOffers.length, bgClass: 'bg-emerald-50', iconClass: 'text-emerald-500', tab: 'accepted', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+    { label: 'Paid', value: paidOffers.length, bgClass: 'bg-violet-50', iconClass: 'text-violet-500', tab: 'paid', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
+    { label: 'Delivered', value: deliveredOffers.length, bgClass: 'bg-teal-50', iconClass: 'text-teal-500', tab: 'delivered', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg> },
+    { label: 'Disputed', value: disputedOffers.length, bgClass: 'bg-rose-50', iconClass: 'text-rose-500', tab: 'disputed', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg> },
+    { label: 'Rejected', value: rejectedOffers.length, bgClass: 'bg-slate-100', iconClass: 'text-slate-400', tab: 'rejected', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+    { label: 'Completed', value: completedOffers.length, bgClass: 'bg-emerald-50', iconClass: 'text-emerald-600', tab: 'completed', icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+  ];
+
+  const statusBorderColor: Record<string, string> = {
+    pending: 'border-l-amber-400', accepted: 'border-l-emerald-400', paid: 'border-l-teal-400',
+    delivered: 'border-l-blue-400', disputed: 'border-l-red-400', rejected: 'border-l-rose-400',
+    completed: 'border-l-slate-400', appealed: 'border-l-orange-400', cancelled: 'border-l-slate-300',
   };
 
-  const renderOfferCard = (offer: Agreement, showMarkDelivered: boolean = false, showDispute: boolean = false) => (
-    <div key={offer.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge status={offer.status as any} />
-          {offer.proposed_price && offer.status === 'pending' && (
-            <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">Proposal awaiting review</span>
-          )}
+  const selectTab = (tabKey: TabType) => { setActiveTab(tabKey); setDrawerOpen(false); };
+
+  console.log('acceptedOffers length in render:', acceptedOffers.length);
+
+  const cardHeader = (offer: Agreement) => (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+      <div className="flex items-center gap-2">
+        <Badge status={offer.status as any} />
+        {offer.proposed_price && offer.status === 'pending' && (
+          <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">Proposal pending review</span>
+        )}
+      </div>
+      <span className="text-xs text-slate-400">{formatDate(offer.created_at)}</span>
+    </div>
+  );
+
+  const cardBody = (offer: Agreement) => (
+    <div className="px-4 py-4 space-y-2.5">
+      <div className="flex items-start gap-3">
+        <span className="text-xs font-medium text-slate-400 w-24 shrink-0 pt-0.5">Request</span>
+        <span className="text-sm font-semibold text-slate-800 break-words">{offer.request_title}</span>
+      </div>
+      <div className="flex items-start gap-3">
+        <span className="text-xs font-medium text-slate-400 w-24 shrink-0 pt-0.5">Scope</span>
+        <span className="text-sm text-slate-600 break-words">{offer.scope}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-medium text-slate-400 w-24 shrink-0">Price</span>
+        <span className="text-sm font-bold text-slate-900 tabular-nums">₦{offer.price.toLocaleString()}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-medium text-slate-400 w-24 shrink-0">Timeline</span>
+        <span className="text-sm text-slate-600">{offer.timeline}</span>
+      </div>
+      <div className="flex items-start gap-3">
+        <span className="text-xs font-medium text-slate-400 w-24 shrink-0 pt-0.5">Deliverables</span>
+        <span className="text-sm text-slate-600 break-words">{offer.deliverables}</span>
+      </div>
+      {offer.delivered_at && (
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-medium text-slate-400 w-24 shrink-0">Delivered</span>
+          <span className="text-sm text-slate-500">{formatDate(offer.delivered_at)}</span>
         </div>
-        <p className="text-sm text-slate-600"><strong>Request:</strong> {offer.request_title}</p>
-        <p className="text-sm text-slate-600"><strong>Scope:</strong> {offer.scope}</p>
-        <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
-        <p className="text-sm text-slate-600"><strong>Timeline:</strong> {offer.timeline}</p>
-        <p className="text-sm text-slate-600"><strong>Deliverables:</strong> {offer.deliverables}</p>
-        <p className="text-xs text-slate-400">Offer made: {formatDate(offer.created_at)}</p>
-        {offer.delivered_at && <p className="text-xs text-slate-400">Delivered: {formatDate(offer.delivered_at)}</p>}
-        <button
-          onClick={() => openChat(offer)}
-          className="text-xs text-blue-600 hover:underline mt-2 text-left"
-        >
-          💬 Chat
-        </button>
+      )}
+    </div>
+  );
+
+  const chatBtn = (offer: Agreement) => (
+    <button onClick={() => openChat(offer)} className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors">
+      <ChatIcon /> Chat
+    </button>
+  );
+
+  const renderOfferCard = (offer: Agreement, showMarkDelivered: boolean = false, showDispute: boolean = false) => (
+    <div key={offer.id} onClick={(e) => { if (!(e.target as HTMLElement).closest('button, a')) router.push(`/agreement/${offer.id}`); }} className={`bg-white rounded-2xl border border-slate-200 border-l-4 ${statusBorderColor[offer.status] ?? 'border-l-slate-300'} shadow-sm hover:shadow-md transition-all overflow-hidden cursor-pointer`}>
+      {cardHeader(offer)}
+      {cardBody(offer)}
+      <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center gap-3">
+        {chatBtn(offer)}
+        {offer.status === 'completed' && !(offer as any).rating_given && (
+          <button onClick={() => openRatingModal(offer)} className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 hover:text-amber-800 transition-colors">
+            <StarIcon /> Rate Student
+          </button>
+        )}
+        {offer.status === 'accepted' && !offer.proposed_price && (
+          <Button variant="outline" size="sm" onClick={() => { setSelectedAgreementForPrice(offer); setProposedPrice(''); setPriceProposalModalOpen(true); }}>
+            Propose new price
+          </Button>
+        )}
         {showMarkDelivered && (
-          <div className="pt-2">
+          <div className="ml-auto">
             <Button variant="primary" size="sm" onClick={() => handleMarkDelivered(offer.id)}>Mark as Delivered</Button>
           </div>
         )}
         {showDispute && canRaiseDispute(offer) && (
-          <div className="pt-2">
+          <div className="ml-auto">
             <Button variant="outline" size="sm" onClick={() => handleDispute(offer)}>Raise Dispute</Button>
-          </div>
-        )}
-        {offer.status === 'accepted' && !offer.proposed_price && (
-          <div className="pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSelectedAgreementForPrice(offer);
-                setProposedPrice('');
-                setPriceProposalModalOpen(true);
-              }}
-            >
-              Propose new price
-            </Button>
-          </div>
-        )}
-        {offer.status === 'completed' && !(offer as any).rating_given && (
-          <div className="pt-2">
-            <Button variant="outline" size="sm" onClick={() => openRatingModal(offer)}>Rate Student</Button>
           </div>
         )}
       </div>
@@ -781,38 +732,57 @@ export default function ConsultantDashboard() {
   );
 
   const renderOpenRequest = (req: Request) => (
-    <div key={req.id} className="border border-slate-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
-      <div className="flex flex-col gap-3">
+    <div key={req.id} onClick={(e) => { if (!(e.target as HTMLElement).closest('button, a')) router.push(`/requests/${req.id}`); }} className="bg-white rounded-2xl border border-slate-200 border-l-4 border-l-blue-400 shadow-sm hover:shadow-md transition-all p-4 sm:p-5 cursor-pointer">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <h3 className="font-semibold text-slate-800 text-sm leading-snug break-words">{req.title}</h3>
+        <Badge status="open" />
+      </div>
+      <p className="text-sm text-slate-600 mb-3 break-words leading-relaxed">{req.description}</p>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{req.category.replace(/_/g, ' ')}</span>
+        {req.budget_range && <span className="text-xs bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-medium">Budget: {req.budget_range}</span>}
+      </div>
+      <div className="flex items-center justify-between mt-3">
         <div>
-          <h3 className="font-bold text-lg text-slate-800">{req.title}</h3>
-          <p className="text-slate-600 text-sm mt-1">{req.description}</p>
-          <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-500">
-            <span>Category: {req.category.replace('_', ' ')}</span>
-            {req.budget_range && <span>Budget: {req.budget_range}</span>}
-          </div>
-          <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-400">
-            <span>Posted by: {req.student_name}</span>
-            <span>Posted on: {formatDate(req.created_at)}</span>
-          </div>
+          <p className="text-xs text-slate-400">By {req.student_name}</p>
+          <p className="text-xs text-slate-400">Posted {formatDate(req.created_at)}</p>
         </div>
-        <div className="flex justify-end">
-          <Button variant="secondary" size="sm" onClick={() => openOfferModal(req)}>Make offer</Button>
-        </div>
+        <Button variant="primary" size="sm" onClick={() => openOfferModal(req)}>Make offer</Button>
       </div>
     </div>
   );
 
   const renderDisputedCard = (offer: Agreement) => (
-    <div key={offer.id} className="border border-red-200 rounded-xl p-3 sm:p-4 hover:shadow transition break-words">
-      <div className="flex flex-col gap-2">
-        <div><Badge status="disputed" /></div>
-        <p className="text-sm text-slate-600"><strong>Request:</strong> {offer.request_title}</p>
-        <p className="text-sm text-slate-600"><strong>Scope:</strong> {offer.scope}</p>
-        <p className="text-sm text-slate-600"><strong>Price:</strong> ₦{offer.price.toLocaleString()}</p>
-        <p className="text-sm text-slate-600"><strong>Dispute reason:</strong> {offer.dispute_reason}</p>
-        {offer.dispute_details && <p className="text-sm text-slate-600"><strong>Details:</strong> {offer.dispute_details}</p>}
-        <div className="flex flex-wrap gap-2 pt-2">
-          <Button variant="outline" size="sm" onClick={() => handleDispute(offer)}>Accept Dispute (Reject)</Button>
+    <div key={offer.id} onClick={(e) => { if (!(e.target as HTMLElement).closest('button, a')) router.push(`/agreement/${offer.id}`); }} className="bg-white rounded-2xl border border-red-200 border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-all overflow-hidden cursor-pointer">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-red-100 bg-red-50">
+        <Badge status="disputed" />
+        <span className="text-xs text-slate-400">{formatDate(offer.created_at)}</span>
+      </div>
+      <div className="px-4 py-4 space-y-2.5">
+        <div className="flex items-start gap-3">
+          <span className="text-xs font-medium text-slate-400 w-24 shrink-0 pt-0.5">Request</span>
+          <span className="text-sm font-semibold text-slate-800 break-words">{offer.request_title}</span>
+        </div>
+        <div className="flex items-start gap-3">
+          <span className="text-xs font-medium text-slate-400 w-24 shrink-0 pt-0.5">Scope</span>
+          <span className="text-sm text-slate-600 break-words">{offer.scope}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-medium text-slate-400 w-24 shrink-0">Price</span>
+          <span className="text-sm font-bold text-slate-900 tabular-nums">₦{offer.price.toLocaleString()}</span>
+        </div>
+        {offer.dispute_reason && (
+          <div className="mt-1 p-3 bg-red-50 rounded-xl border border-red-100">
+            <p className="text-xs text-red-700 font-semibold mb-0.5">Dispute reason</p>
+            <p className="text-xs text-red-700">{offer.dispute_reason}</p>
+            {offer.dispute_details && <p className="text-xs text-red-600 mt-1">{offer.dispute_details}</p>}
+          </div>
+        )}
+      </div>
+      <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center gap-2">
+        {chatBtn(offer)}
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => handleDispute(offer)}>Accept Dispute</Button>
           <Button variant="primary" size="sm" onClick={() => handleAppeal(offer)}>Submit Appeal</Button>
           <Button variant="outline" size="sm" onClick={() => { setReportModalOpen(true); setReportedUserId((offer as any).requests?.student_id || ''); setReportAgreementId(offer.id); }}>Report</Button>
         </div>
@@ -820,264 +790,320 @@ export default function ConsultantDashboard() {
     </div>
   );
 
-  const tabs = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'open', label: `Open Requests (${getCountForTab('open')})` },
-    { key: 'pending', label: `Pending Offers (${getCountForTab('pending')})` },
-    { key: 'accepted', label: `Accepted (${getCountForTab('accepted')})` },
-    { key: 'paid', label: `Paid (${getCountForTab('paid')})` },
-    { key: 'delivered', label: `Delivered (${getCountForTab('delivered')})` },
-    { key: 'disputed', label: `Disputed (${getCountForTab('disputed')})` },
-    { key: 'rejected', label: `Rejected (${getCountForTab('rejected')})` },
-    { key: 'completed', label: `Completed (${getCountForTab('completed')})` },
-  ];
+  const SidebarNav = ({ mobile = false }: { mobile?: boolean }) => (
+    <>
+      {sidebarTabs.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <button key={tab.key} onClick={() => selectTab(tab.key)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${isActive ? 'bg-violet-50 text-violet-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}>
+            <span className={`shrink-0 ${isActive ? 'text-violet-600' : 'text-slate-400'}`}>{tab.icon}</span>
+            <span className="flex-1 text-left">{tab.label}</span>
+            {tab.count > 0 && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold tabular-nums min-w-[20px] text-center ${isActive ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </>
+  );
 
-  const selectTab = (tabKey: TabType) => {
-    setActiveTab(tabKey);
-    setDrawerOpen(false);
-  };
-
-  console.log('acceptedOffers length in render:', acceptedOffers.length);
+  const SidebarFooter = ({ onLinkClick }: { onLinkClick?: () => void }) => (
+    <>
+      <Link href="/ratings" onClick={onLinkClick} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors">
+        <RatingsStarIcon /> Ratings History
+      </Link>
+      <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors">
+        <SignOutIcon /> Sign out
+      </button>
+    </>
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-20">
-        <div className="container mx-auto px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-700 to-indigo-700 bg-clip-text text-transparent">Accordiax</h1>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <span className="hidden sm:inline flex items-center gap-2 text-xs sm:text-sm text-slate-600 truncate max-w-[200px]">
-              {userName || userEmail}
-              {verified && (
-                <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Verified</span>
-              )}
-            </span>
-            {userRole && <RoleSwitcher currentRole={userRole} />}
-            <span className="hidden sm:inline-flex">
-              <Link href="/ratings"><Button variant="ghost" size="sm">Ratings History</Button></Link>
-            </span>
-            <span className="hidden sm:inline-flex">
-              <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
-            </span>
-            <button
-              onClick={() => setDrawerOpen(true)}
-              className="block sm:hidden p-2 rounded-md text-slate-600 hover:bg-slate-100 focus:outline-none"
-            >
-              <Bars3Icon className="h-6 w-6" />
-            </button>
-          </div>
+    <div className="min-h-screen bg-slate-50 lg:flex">
+
+      {/* ===== DESKTOP SIDEBAR ===== */}
+      <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-200 fixed inset-y-0 left-0 z-30 shrink-0">
+        <div className="flex items-center px-6 h-16 border-b border-slate-100">
+          <Link href="/" className="text-lg font-extrabold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent tracking-tight">Accordiax</Link>
         </div>
-      </header>
-
-      {/* Desktop tabs */}
-      <div className="hidden sm:block border-b border-slate-200">
-        <div className="container mx-auto px-4 overflow-x-auto">
-          <div className="flex gap-1 sm:gap-2 min-w-max">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as TabType)}
-                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium whitespace-nowrap ${
-                  activeTab === tab.key
-                    ? 'text-purple-600 border-b-2 border-purple-600'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile drawer */}
-      {drawerOpen && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-40 sm:hidden" onClick={() => setDrawerOpen(false)} />
-          <div className="fixed bottom-0 left-0 right-0 h-1/2 bg-white shadow-2xl z-50 sm:hidden flex flex-col rounded-t-2xl">
-            <div className="flex justify-between items-center px-5 py-4 border-b border-slate-200">
-              <h2 className="font-semibold text-slate-800">Navigate</h2>
-              <button onClick={() => setDrawerOpen(false)} className="p-1 rounded-md text-slate-500 hover:bg-slate-100">
-                <XMarkIcon className="h-5 w-5" />
-              </button>
+        <div className="px-4 py-5 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center font-bold text-violet-700 text-sm shrink-0">
+              {(userName || userEmail || 'C').charAt(0).toUpperCase()}
             </div>
-            <div className="flex-1 overflow-y-auto py-2">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => selectTab(tab.key as TabType)}
-                  className={`w-full text-left px-5 py-3 text-sm font-medium transition-colors ${
-                    activeTab === tab.key
-                      ? 'bg-purple-50 text-purple-600 border-l-4 border-purple-600'
-                      : 'text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            <div className="border-t border-slate-200 px-5 py-3">
-              <button onClick={handleLogout} className="w-full text-left py-2 text-sm font-medium text-red-600 hover:text-red-700">Logout</button>
-            </div>
-          </div>
-        </>
-      )}
-
-      <main className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 p-4 sm:p-6">
-              <h3 className="text-sm sm:text-lg font-bold text-slate-800 break-words">Welcome back, {userName || userEmail}.</h3>
-              <p className="text-slate-600 text-sm sm:text-base mt-1">Browse open requests, manage offers, track payments, and handle disputes.</p>
-              <p className="text-slate-500 text-xs sm:text-sm mt-2">Consultant Dashboard – Find students, submit offers, get paid, and build your reputation.</p>
-              {profileStats && (
-                <div className="mt-4 p-3 bg-slate-100 rounded-lg">
-                  <p className="text-sm font-medium">📊 Your Trust Score: <span className="font-bold">{calculateCompletionRate()}%</span> completion rate</p>
-                  <p className="text-xs text-slate-600">Based on {profileStats.total_agreements} total agreements | {profileStats.completed_agreements} completed | {profileStats.disputed_agreements} disputes | {profileStats.cancelled_agreements} cancelled</p>
-                </div>
-              )}
-              <div className="mt-4 p-4 bg-white rounded-lg border">
-                <h3 className="font-semibold">Identity Verification</h3>
-                <p className="text-sm text-gray-500">Upload a government-issued ID to build trust.</p>
-                {verificationStatus === 'verified' && <span className="text-green-600 text-sm">✅ Verified</span>}
-                {verificationStatus === 'pending' && <span className="text-yellow-600 text-sm">⏳ Pending review</span>}
-                {verificationStatus === 'rejected' && <span className="text-red-600 text-sm">❌ Rejected – please upload again</span>}
-                <div className="mt-2">
-                  {verificationStatus !== 'pending' && verificationStatus !== 'verified' && (
-                    <input type="file" accept="image/*" onChange={uploadID} disabled={uploading} className="mt-2 block" />
-                  )}
-                  {idPhotoPath && (
-                    <button onClick={previewOwnID} className="text-blue-600 text-sm underline ml-2">Preview my ID</button>
-                  )}
-                </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="text-sm font-semibold text-slate-800 truncate">{userName || 'Consultant'}</p>
+                {verified && <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full shrink-0">Verified</span>}
               </div>
+              <p className="text-xs text-slate-400 truncate">{userEmail}</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              {statCards.map((card) => (
-                <button key={card.label} onClick={() => selectTab(card.tab as TabType)} className="flex flex-col gap-2 p-4 sm:p-6 rounded-2xl border bg-white/80 backdrop-blur-sm hover:shadow-md transition-all text-left">
-                  <span className="text-2xl sm:text-3xl font-bold" style={{ color: card.color }}>{card.value}</span>
-                  <span className="text-xs sm:text-sm text-slate-600">{card.label}</span>
-                </button>
-              ))}
+          </div>
+          {userRole && <div className="mt-3"><RoleSwitcher currentRole={userRole} /></div>}
+        </div>
+        <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5"><SidebarNav /></nav>
+        <div className="px-3 pb-4 pt-2 border-t border-slate-100 space-y-0.5"><SidebarFooter /></div>
+      </aside>
+
+      {/* ===== MAIN AREA ===== */}
+      <div className="flex-1 lg:pl-64 flex flex-col min-h-screen">
+
+        {/* Top bar */}
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-20 h-16 flex items-center shrink-0">
+          <div className="w-full px-4 sm:px-6 flex items-center">
+            <Link href="/" className="lg:hidden text-base font-extrabold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">Accordiax</Link>
+            <div className="hidden lg:block">
+              <h1 className="text-sm font-semibold text-slate-700">{sidebarTabs.find(t => t.key === activeTab)?.label || 'Overview'}</h1>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              {userRole && <div className="hidden sm:block"><RoleSwitcher currentRole={userRole} /></div>}
+              <button onClick={() => setDrawerOpen(true)} className="lg:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">
+                <Bars3Icon className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Mobile drawer */}
+        {drawerOpen && (
+          <>
+            <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setDrawerOpen(false)} />
+            <div className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden flex flex-col shadow-2xl">
+              <div className="flex items-center justify-between px-5 h-16 border-b border-slate-200 shrink-0">
+                <Link href="/" className="text-base font-extrabold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">Accordiax</Link>
+                <button onClick={() => setDrawerOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition-colors"><XMarkIcon className="h-5 w-5" /></button>
+              </div>
+              <div className="px-4 py-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center font-bold text-violet-700 text-sm shrink-0">
+                    {(userName || userEmail || 'C').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{userName || 'Consultant'}</p>
+                      {verified && <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full shrink-0">Verified</span>}
+                    </div>
+                    <p className="text-xs text-slate-400 truncate">{userEmail}</p>
+                  </div>
+                </div>
+                {userRole && <div className="mt-3"><RoleSwitcher currentRole={userRole} /></div>}
+              </div>
+              <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5"><SidebarNav mobile /></nav>
+              <div className="border-t border-slate-100 px-3 py-3 space-y-0.5 shrink-0"><SidebarFooter onLinkClick={() => setDrawerOpen(false)} /></div>
             </div>
           </>
         )}
 
-        {/* Open Requests Tab */}
-        {activeTab === 'open' && (
-          <Card>
-            <div className="mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Open Requests from Students</h2>
-              <p className="text-slate-500 text-sm">Browse and make offers on student requests.</p>
-            </div>
-            {openRequests.length === 0 ? <p className="text-slate-500">No open requests.</p> : <div className="space-y-4">{openRequests.map(renderOpenRequest)}</div>}
-          </Card>
-        )}
+        {/* Page content */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-4xl w-full mx-auto">
 
-        {/* Pending Offers Tab */}
-        {activeTab === 'pending' && (
-          <Card>
-            <div className="mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Pending Offers</h2>
-              <p className="text-slate-500 text-sm">Offers waiting for student decision.</p>
-            </div>
-            {pendingOffers.length === 0 ? <p className="text-slate-500">No pending offers.</p> : <div className="space-y-4">{pendingOffers.map((o) => renderOfferCard(o, false, false))}</div>}
-          </Card>
-        )}
+          {/* OVERVIEW */}
+          {activeTab === 'overview' && (
+            <div className="space-y-5">
+              <div className="bg-gradient-to-br from-violet-600 via-violet-600 to-indigo-700 rounded-2xl p-5 sm:p-6 text-white">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center font-bold text-2xl text-white shrink-0 border border-white/20">
+                    {(userName || userEmail || 'C').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-violet-200 text-xs font-medium uppercase tracking-wider">Welcome back</p>
+                      {verified && <span className="text-xs font-semibold bg-white/20 text-white px-2 py-0.5 rounded-full border border-white/20">Verified</span>}
+                    </div>
+                    <h2 className="text-lg sm:text-xl font-bold text-white mt-0.5 truncate">{userName || userEmail}</h2>
+                  </div>
+                </div>
+                {profileStats && (
+                  <div className="mt-5 bg-white/10 rounded-xl p-4 border border-white/10">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-violet-100 text-xs font-medium uppercase tracking-wider">Trust Score</span>
+                      <span className="text-white text-sm font-bold tabular-nums">{calculateCompletionRate()}%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+                      <div className="h-full bg-white rounded-full transition-all duration-700" style={{ width: `${Math.max(calculateCompletionRate(), 3)}%` }} />
+                    </div>
+                    <p className="text-violet-200 text-xs mt-3">
+                      {profileStats.total_agreements} total, {profileStats.completed_agreements} completed, {profileStats.disputed_agreements} disputed
+                    </p>
+                  </div>
+                )}
+              </div>
 
-        {/* Accepted Offers Tab */}
-        {activeTab === 'accepted' && (
-          <Card>
-            <div className="mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Accepted Offers</h2>
-              <p className="text-slate-500 text-sm">Offers accepted by students. Awaiting payment.</p>
-            </div>
-            {acceptedOffers.length === 0 ? <p className="text-slate-500">No accepted offers.</p> : <div className="space-y-4">{acceptedOffers.map((offer) => renderOfferCard(offer, false, false))}</div>}
-          </Card>
-        )}
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+                {statCards.map((card) => (
+                  <button key={card.label} onClick={() => selectTab(card.tab as TabType)} className="group bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 hover:shadow-md hover:-translate-y-0.5 hover:border-slate-300 transition-all text-left">
+                    <div className="mb-3">
+                      <div className={`w-10 h-10 rounded-xl ${card.bgClass} flex items-center justify-center ${card.iconClass} group-hover:scale-110 transition-transform`}>
+                        {card.icon}
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-800 tabular-nums">{card.value}</p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-snug">{card.label}</p>
+                  </button>
+                ))}
+              </div>
 
-        {/* Paid Offers Tab */}
-        {activeTab === 'paid' && (
-          <Card>
-            <div className="mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Paid Offers</h2>
-              <p className="text-slate-500 text-sm">Payments received. You can mark work as delivered.</p>
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-800">Identity Verification</h3>
+                        <p className="text-xs text-slate-400 mt-0.5">Upload a government-issued ID to build trust with students</p>
+                      </div>
+                      {verificationStatus === 'verified' && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full shrink-0">Verified</span>}
+                      {verificationStatus === 'pending' && <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full shrink-0">Under review</span>}
+                      {verificationStatus === 'rejected' && <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full shrink-0">Rejected</span>}
+                      {verificationStatus === 'unverified' && <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full shrink-0">Not verified</span>}
+                    </div>
+                    {verificationStatus !== 'pending' && verificationStatus !== 'verified' && (
+                      <div className="mt-3 bg-slate-50 rounded-xl p-3 border border-slate-200">
+                        <p className="text-xs text-slate-500 mb-2">A national ID, student ID, or passport is acceptable.</p>
+                        <input type="file" accept="image/*" onChange={uploadID} disabled={uploading} className="text-xs text-slate-600 file:mr-2 file:text-xs file:font-semibold file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-violet-100 file:text-violet-700 hover:file:bg-violet-200 cursor-pointer disabled:opacity-50" />
+                      </div>
+                    )}
+                    {idPhotoPath && <button onClick={previewOwnID} className="mt-2 text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors">Preview uploaded ID</button>}
+                  </div>
+                </div>
+              </div>
             </div>
-            {paidOffers.length === 0 ? <p className="text-slate-500">No paid offers.</p> : <div className="space-y-4">{paidOffers.map((o) => renderOfferCard(o, true, false))}</div>}
-          </Card>
-        )}
+          )}
 
-        {/* Delivered Offers Tab */}
-        {activeTab === 'delivered' && (
-          <Card>
-            <div className="mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Delivered Work</h2>
-              <p className="text-slate-500 text-sm">Work marked as delivered. Awaiting student approval.</p>
+          {/* OPEN REQUESTS */}
+          {activeTab === 'open' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Open Requests</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Browse student requests and make your offer.</p>
+              </div>
+              {openRequests.length === 0 ? (
+                <EmptyState icon={<svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>} title="No open requests right now" description="There are no student requests available at the moment. Check back soon for new opportunities." />
+              ) : <div className="space-y-3">{openRequests.map(renderOpenRequest)}</div>}
             </div>
-            {deliveredOffers.length === 0 ? <p className="text-slate-500">No delivered work.</p> : <div className="space-y-4">{deliveredOffers.map((o) => renderOfferCard(o, false, true))}</div>}
-          </Card>
-        )}
+          )}
 
-        {/* Disputed Tab */}
-        {activeTab === 'disputed' && (
-          <Card>
-            <div className="mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Disputed Agreements</h2>
-              <p className="text-slate-500 text-sm">Disputes raised. You can accept the dispute (reject) or submit an appeal.</p>
+          {/* PENDING OFFERS */}
+          {activeTab === 'pending' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Pending Offers</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Offers sent to students awaiting their decision.</p>
+              </div>
+              {pendingOffers.length === 0 ? (
+                <EmptyState icon={<svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} title="No pending offers" description="Offers you send to students will appear here while awaiting their decision." action={{ label: 'Browse open requests', onClick: () => selectTab('open') }} />
+              ) : <div className="space-y-3">{pendingOffers.map((o) => renderOfferCard(o, false, false))}</div>}
             </div>
-            {disputedOffers.length === 0 ? <p className="text-slate-500">No disputed agreements.</p> : <div className="space-y-4">{disputedOffers.map(renderDisputedCard)}</div>}
-          </Card>
-        )}
+          )}
 
-        {/* Rejected Offers Tab */}
-        {activeTab === 'rejected' && (
-          <Card>
-            <div className="mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Rejected Offers</h2>
-              <p className="text-slate-500 text-sm">Offers declined or disputes resolved against you.</p>
+          {/* ACCEPTED OFFERS */}
+          {activeTab === 'accepted' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Accepted Offers</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Offers accepted by students, awaiting their payment.</p>
+              </div>
+              {acceptedOffers.length === 0 ? (
+                <EmptyState icon={<svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} title="No accepted offers" description="When a student accepts your offer, it will appear here awaiting their payment." />
+              ) : <div className="space-y-3">{acceptedOffers.map((offer) => renderOfferCard(offer, false, false))}</div>}
             </div>
-            {rejectedOffers.length === 0 ? <p className="text-slate-500">No rejected offers.</p> : <div className="space-y-4">{rejectedOffers.map((o) => renderOfferCard(o, false, false))}</div>}
-          </Card>
-        )}
+          )}
 
-        {/* Completed Tab */}
-        {activeTab === 'completed' && (
-          <Card>
-            <div className="mb-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Completed Agreements</h2>
-              <p className="text-slate-500 text-sm">Work delivered and approved. Thank you!</p>
+          {/* PAID OFFERS */}
+          {activeTab === 'paid' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Paid Offers</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Payment received and held in escrow. Complete the work and mark as delivered.</p>
+              </div>
+              {paidOffers.length === 0 ? (
+                <EmptyState icon={<svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>} title="No paid offers" description="Offers paid by students will appear here. You can then mark your work as delivered." />
+              ) : <div className="space-y-3">{paidOffers.map((o) => renderOfferCard(o, true, false))}</div>}
             </div>
-            {completedOffers.length === 0 ? <p className="text-slate-500">No completed agreements.</p> : <div className="space-y-4">{completedOffers.map((o) => renderOfferCard(o, false, false))}</div>}
-          </Card>
-        )}
-      </main>
+          )}
 
-      {/* New Offer Modal */}
+          {/* DELIVERED */}
+          {activeTab === 'delivered' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Delivered Work</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Work submitted and awaiting student approval.</p>
+              </div>
+              {deliveredOffers.length === 0 ? (
+                <EmptyState icon={<svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>} title="No delivered work" description="Work you have marked as delivered will appear here while awaiting student approval." />
+              ) : <div className="space-y-3">{deliveredOffers.map((o) => renderOfferCard(o, false, true))}</div>}
+            </div>
+          )}
+
+          {/* DISPUTED */}
+          {activeTab === 'disputed' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Disputed Agreements</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Review disputes and submit an appeal or accept the outcome.</p>
+              </div>
+              {disputedOffers.length === 0 ? (
+                <EmptyState icon={<svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>} title="No active disputes" description="You have no disputed agreements. Keep up the great work!" />
+              ) : <div className="space-y-3">{disputedOffers.map(renderDisputedCard)}</div>}
+            </div>
+          )}
+
+          {/* REJECTED */}
+          {activeTab === 'rejected' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Rejected Offers</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Offers declined by students or disputes resolved against you.</p>
+              </div>
+              {rejectedOffers.length === 0 ? (
+                <EmptyState icon={<svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} title="No rejected offers" description="Offers declined by students will appear here for your reference." />
+              ) : <div className="space-y-3">{rejectedOffers.map((o) => renderOfferCard(o, false, false))}</div>}
+            </div>
+          )}
+
+          {/* COMPLETED */}
+          {activeTab === 'completed' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Completed Agreements</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Work delivered and approved. Thank you!</p>
+              </div>
+              {completedOffers.length === 0 ? (
+                <EmptyState icon={<svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} title="No completed agreements yet" description="Agreements approved by students after delivery will appear here. Keep going!" />
+              ) : <div className="space-y-3">{completedOffers.map((o) => renderOfferCard(o, false, false))}</div>}
+            </div>
+          )}
+
+        </main>
+      </div>
+
+      {/* ===== MODALS ===== */}
+
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={`Make an offer for: ${selectedRequest?.title || ''}`}>
         <form onSubmit={submitOffer} className="space-y-4">
           <textarea name="scope" placeholder="What will you do? (scope)" className="w-full px-4 py-2 border border-slate-300 rounded-xl" rows={2} value={offerForm.scope} onChange={handleOfferChange} required />
-          <Input type="number" name="price" placeholder="Price (₦)" value={offerForm.price} onChange={handleOfferChange} required />
+          <Input type="number" name="price" placeholder="Price (N)" value={offerForm.price} onChange={handleOfferChange} required />
           <Input name="timeline" placeholder="Timeline (e.g., 5 days)" value={offerForm.timeline} onChange={handleOfferChange} required />
           <textarea name="deliverables" placeholder="Deliverables" className="w-full px-4 py-2 border border-slate-300 rounded-xl" rows={2} value={offerForm.deliverables} onChange={handleOfferChange} required />
           {error && <p className="text-red-600 text-sm">{error}</p>}
           <div className="flex gap-3">
             <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="submit" variant="secondary" loading={submitting}>Send Offer</Button>
+            <Button type="submit" variant="primary" loading={submitting}>Send Offer</Button>
           </div>
         </form>
       </Modal>
 
-      {/* Dispute Modal */}
       <Modal isOpen={disputeModalOpen} onClose={() => setDisputeModalOpen(false)} title="Raise a Dispute">
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Reason for dispute *</label>
-            <select
-              value={disputeReason}
-              onChange={(e) => setDisputeReason(e.target.value)}
-              className="w-full border rounded p-2"
-              required
-            >
+            <select value={disputeReason} onChange={(e) => setDisputeReason(e.target.value)} className="w-full border rounded p-2" required>
               <option value="">Select reason</option>
               <option value="Student not responding">Student not responding to delivered work</option>
               <option value="Work completed but not approved">Work completed but not approved</option>
@@ -1087,142 +1113,83 @@ export default function ConsultantDashboard() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Details (optional)</label>
-            <textarea
-              value={disputeDetails}
-              onChange={(e) => setDisputeDetails(e.target.value)}
-              className="w-full border rounded p-2"
-              rows={3}
-              placeholder="Explain why you are disputing..."
-            />
+            <textarea value={disputeDetails} onChange={(e) => setDisputeDetails(e.target.value)} className="w-full border rounded p-2" rows={3} placeholder="Explain why you are disputing..." />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Upload evidence (optional)</label>
-            <input
-              type="file"
-              onChange={(e) => setDisputeEvidence(e.target.files?.[0] || null)}
-              className="w-full"
-              accept="image/*,application/pdf"
-            />
+            <input type="file" onChange={(e) => setDisputeEvidence(e.target.files?.[0] || null)} className="w-full" accept="image/*,application/pdf" />
           </div>
           <Button onClick={submitDispute} loading={actionLoading === selectedAgreement?.id}>Submit Dispute</Button>
         </div>
       </Modal>
 
-      {/* Appeal Modal */}
       <Modal isOpen={appealModalOpen} onClose={() => setAppealModalOpen(false)} title="Submit an Appeal">
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Appeal reason *</label>
-            <textarea
-              value={appealReason}
-              onChange={(e) => setAppealReason(e.target.value)}
-              className="w-full border rounded p-2"
-              rows={2}
-              required
-              placeholder="Briefly state why you are appealing..."
-            />
+            <textarea value={appealReason} onChange={(e) => setAppealReason(e.target.value)} className="w-full border rounded p-2" rows={2} required placeholder="Briefly state why you are appealing..." />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Detailed explanation (optional)</label>
-            <textarea
-              value={appealDetails}
-              onChange={(e) => setAppealDetails(e.target.value)}
-              className="w-full border rounded p-2"
-              rows={3}
-              placeholder="Provide additional context or evidence..."
-            />
+            <textarea value={appealDetails} onChange={(e) => setAppealDetails(e.target.value)} className="w-full border rounded p-2" rows={3} placeholder="Provide additional context or evidence..." />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Upload evidence (optional)</label>
-            <input
-              type="file"
-              onChange={(e) => setAppealEvidence(e.target.files?.[0] || null)}
-              className="w-full"
-              accept="image/*,application/pdf"
-            />
+            <input type="file" onChange={(e) => setAppealEvidence(e.target.files?.[0] || null)} className="w-full" accept="image/*,application/pdf" />
           </div>
           <Button onClick={submitAppeal} loading={actionLoading === selectedAgreement?.id}>Submit Appeal</Button>
         </div>
       </Modal>
 
-      {/* Price Proposal Modal */}
       <Modal isOpen={priceProposalModalOpen} onClose={() => setPriceProposalModalOpen(false)} title="Propose new price">
         <div className="space-y-4">
-          <p>Current price: ₦{selectedAgreementForPrice?.price?.toLocaleString()}</p>
-          <input
-            type="number"
-            placeholder="New price (₦)"
-            value={proposedPrice}
-            onChange={(e) => setProposedPrice(e.target.value)}
-            className="w-full border border-slate-300 rounded-lg p-2"
-          />
+          <p>Current price: N{selectedAgreementForPrice?.price?.toLocaleString()}</p>
+          <input type="number" placeholder="New price (N)" value={proposedPrice} onChange={(e) => setProposedPrice(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2" />
           <Button onClick={proposeNewPrice} loading={submittingPrice}>Submit Proposal</Button>
         </div>
       </Modal>
 
-      {/* Chat Modal */}
-      <Modal isOpen={chatModalOpen} onClose={() => setChatModalOpen(false)} title={`Chat - Student`}>
+      <Modal isOpen={chatModalOpen} onClose={() => setChatModalOpen(false)} title="Chat - Student">
         <div className="h-96 flex flex-col">
           <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-3 mb-4 p-2 bg-gray-50 rounded-lg">
             {chatMessages.map((msg) => {
               const isOwn = msg.sender_id === currentUserId;
               return (
                 <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
-                  {!isOwn && (
-                    <span className="text-xs font-semibold text-slate-500 mb-1 ml-1">
-                      {msg.sender?.full_name || 'Unknown'}
-                    </span>
-                  )}
+                  {!isOwn && <span className="text-xs font-semibold text-slate-500 mb-1 ml-1">{msg.sender?.full_name || 'Unknown'}</span>}
                   <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${isOwn ? 'bg-blue-500 text-white rounded-br-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'}`}>
                     <p className="text-sm break-words">{msg.message}</p>
-                    <span className={`text-xs ${isOwn ? 'text-blue-100' : 'text-slate-400'} block text-right mt-1`}>
-                      {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                    <span className={`text-xs ${isOwn ? 'text-blue-100' : 'text-slate-400'} block text-right mt-1`}>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                 </div>
               );
             })}
           </div>
           <div className="flex gap-2 items-center">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message..."
-              className="flex-1 border border-slate-300 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            />
+            <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 border border-slate-300 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" onKeyDown={(e) => e.key === 'Enter' && sendMessage()} />
             <Button onClick={sendMessage} loading={sendingMessage} size="sm" className="rounded-full px-4">Send</Button>
           </div>
         </div>
       </Modal>
 
-      {/* Rating Modal */}
       <Modal isOpen={ratingModalOpen} onClose={() => setRatingModalOpen(false)} title="Rate this agreement">
         <div className="space-y-4">
           <p className="text-center">How would you rate your experience with this student?</p>
           <div className="flex justify-center gap-2">
             {[1,2,3,4,5].map((star) => (
-              <button
-                key={star}
-                onClick={() => setRatingValue(star)}
-                className={`text-3xl ${ratingValue >= star ? 'text-yellow-500' : 'text-gray-300'}`}
-              >
-                ★
-              </button>
+              <button key={star} onClick={() => setRatingValue(star)} className={`text-3xl ${ratingValue >= star ? 'text-yellow-500' : 'text-gray-300'}`}>★</button>
             ))}
           </div>
           <Button onClick={submitRating} className="w-full">Submit Rating</Button>
         </div>
       </Modal>
 
-      {/* Student Price Proposal Modal */}
       <Modal isOpen={showProposalModal} onClose={() => setShowProposalModal(false)} title="Student Price Proposal">
         <div className="space-y-4">
           <p>The student has proposed a new price for your offer on request:</p>
           <p><strong>{pendingProposal?.request_title}</strong></p>
-          <p><strong>Original price:</strong> ₦{pendingProposal?.price?.toLocaleString()}</p>
-          <p><strong>Proposed price:</strong> ₦{pendingProposal?.proposed_price?.toLocaleString()}</p>
+          <p><strong>Original price:</strong> N{pendingProposal?.price?.toLocaleString()}</p>
+          <p><strong>Proposed price:</strong> N{pendingProposal?.proposed_price?.toLocaleString()}</p>
           <div className="flex gap-3">
             <Button onClick={acceptStudentProposal}>Accept Proposal</Button>
             <Button variant="outline" onClick={declineStudentProposal}>Decline</Button>
@@ -1230,12 +1197,9 @@ export default function ConsultantDashboard() {
         </div>
       </Modal>
 
-      <ReportModal
-        isOpen={reportModalOpen}
-        onClose={() => setReportModalOpen(false)}
-        reportedUserId={reportedUserId}
-        agreementId={reportAgreementId}
-      />
+      <ReportModal isOpen={reportModalOpen} onClose={() => setReportModalOpen(false)} reportedUserId={reportedUserId} agreementId={reportAgreementId} />
+
+      <ToastContainer toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }
