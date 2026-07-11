@@ -322,19 +322,19 @@ export default async function HomePage() {
               <p className="mt-6 text-lg text-indigo-100 leading-relaxed max-w-lg animate-slide-up">
                 Post your request, agree on scope and price, and pay into escrow. Your funds are protected until you confirm the work is complete.
               </p>
-              <div className="mt-8 flex flex-wrap gap-4 animate-slide-up">
+              <div className="mt-8 flex gap-3 animate-slide-up">
                 <Link
                   href="/login"
-                  className="inline-flex items-center gap-2 bg-white text-indigo-700 font-semibold px-6 py-3 rounded-xl shadow-md hover:shadow-xl hover:bg-indigo-50 hover:-translate-y-0.5 transition-all duration-200 text-sm"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white text-indigo-700 font-semibold px-5 py-3 sm:px-6 rounded-xl shadow-md hover:shadow-xl hover:bg-indigo-50 hover:-translate-y-0.5 transition-all duration-200 text-sm"
                 >
                   Get started free
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </Link>
                 <Link
                   href="/how-it-works"
-                  className="inline-flex items-center gap-2 border border-indigo-400/40 text-indigo-200 font-semibold px-6 py-3 rounded-xl hover:bg-indigo-800/40 hover:border-indigo-300/60 transition-all duration-200 text-sm"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 border border-indigo-400/40 text-indigo-200 font-semibold px-5 py-3 sm:px-6 rounded-xl hover:bg-indigo-800/40 hover:border-indigo-300/60 transition-all duration-200 text-sm"
                 >
                   See how it works
                 </Link>
