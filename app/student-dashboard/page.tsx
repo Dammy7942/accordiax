@@ -83,6 +83,12 @@ const SignOutIcon = () => (
   </svg>
 );
 
+const ProfileIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+  </svg>
+);
+
 export default function StudentDashboard() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -878,6 +884,9 @@ export default function StudentDashboard() {
 
   const SidebarFooter = ({ onLinkClick }: { onLinkClick?: () => void }) => (
     <>
+      <Link href="/profile" onClick={onLinkClick} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors">
+        <ProfileIcon /> My Profile
+      </Link>
       <Link href="/ratings" onClick={onLinkClick} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors">
         <RatingsStarIcon /> Ratings History
       </Link>

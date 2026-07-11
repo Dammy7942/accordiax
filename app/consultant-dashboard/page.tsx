@@ -82,6 +82,12 @@ const SignOutIcon = () => (
   </svg>
 );
 
+const ProfileIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+  </svg>
+);
+
 export default function ConsultantDashboard() {
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -241,12 +247,6 @@ export default function ConsultantDashboard() {
         .eq('consultant_id', user.id)
         .order('created_at', { ascending: false });
 
-      console.log('===== DIAGNOSTIC =====');
-      console.log('Logged consultant ID:', user.id);
-      console.log('Total offers fetched:', allOffers?.length);
-      console.log('Paid offers in raw data:', allOffers?.filter(o => o.status === 'paid').length);
-      console.log('======================');
-
       if (offerError) console.error(offerError);
       else {
         const enriched = (allOffers || []).map((o: any) => ({
@@ -258,7 +258,6 @@ export default function ConsultantDashboard() {
         setAcceptedOffers(enriched.filter((o: any) => o.status === 'accepted'));
         const paid = enriched.filter((o: any) => o.status === 'paid' || o.status === 'paid_held');
         setPaidOffers(paid);
-        console.log('Paid offers:', paid.length);
         setRejectedOffers(enriched.filter((o: any) => o.status === 'rejected'));
         setCompletedOffers(enriched.filter((o: any) => o.status === 'completed'));
         setDeliveredOffers(enriched.filter((o: any) => o.status === 'delivered'));
@@ -382,26 +381,20 @@ export default function ConsultantDashboard() {
   };
 
   const handleMarkDelivered = async (agreementId: string) => {
-    console.log('Mark as delivered clicked for agreement:', agreementId);
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('agreements')
         .update({ status: 'delivered', delivered_at: new Date().toISOString() })
         .eq('id', agreementId)
         .select();
-      console.log('Update response:', { data, error });
       if (error) { toast('Error marking as delivered: ' + error.message, 'error'); return; }
       try {
-        console.log('Sending email request for agreement:', agreementId);
-        const res = await fetch('/api/email/notify-delivered', {
+        await fetch('/api/email/notify-delivered', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ agreementId }),
         });
-        const data = await res.json();
-        console.log('Email API response status:', res.status);
-        console.log('Email API response data:', data);
-      } catch (err) { console.error('Email fetch error:', err); }
+      } catch (err) { console.error('Email notification failed:', err); }
       toast('Work marked as delivered. The student will review.', 'success');
       setTimeout(() => window.location.reload(), 1200);
     } catch (err) {
@@ -650,7 +643,6 @@ export default function ConsultantDashboard() {
 
   const selectTab = (tabKey: TabType) => { setActiveTab(tabKey); setDrawerOpen(false); };
 
-  console.log('acceptedOffers length in render:', acceptedOffers.length);
 
   const cardHeader = (offer: Agreement) => (
     <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
@@ -811,6 +803,9 @@ export default function ConsultantDashboard() {
 
   const SidebarFooter = ({ onLinkClick }: { onLinkClick?: () => void }) => (
     <>
+      <Link href="/profile" onClick={onLinkClick} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors">
+        <ProfileIcon /> My Profile
+      </Link>
       <Link href="/ratings" onClick={onLinkClick} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors">
         <RatingsStarIcon /> Ratings History
       </Link>
@@ -1149,9 +1144,9 @@ export default function ConsultantDashboard() {
         </div>
       </Modal>
 
-      <Modal isOpen={chatModalOpen} onClose={() => setChatModalOpen(false)} title="Chat - Student">
+      <Modal isOpen={chatModalOpen} onClose={() => setChatModalOpen(false)} title={selectedAgreement?.request_title ? `Chat: ${selectedAgreement.request_title}` : 'Chat'}>
         <div className="h-96 flex flex-col">
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-3 mb-4 p-2 bg-gray-50 rounded-lg">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-3 mb-4 p-2 bg-slate-50 rounded-lg">
             {chatMessages.map((msg) => {
               const isOwn = msg.sender_id === currentUserId;
               return (
