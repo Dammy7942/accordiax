@@ -1,19 +1,39 @@
 'use client';
+import { supabase } from '@/lib/supabaseClient';
 import { useEffect, useState } from 'react';
 
+interface EscrowAgreement {
+  id: string;
+  consultant_id: string;
+  price: number | null;
+  paystack_ref: string | null;
+  requests: { title: string } | null;
+}
+
 export default function EscrowAdminPage() {
-  const [agreements, setAgreements] = useState<any[]>([]);
+  const [agreements, setAgreements] = useState<EscrowAgreement[]>([]);
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [releasing, setReleasing] = useState<string | null>(null);
 
   const loadCompleted = async () => {
+    setLoading(true);
     try {
       const res = await fetch('/api/admin/escrow');
       const data = await res.json();
       if (Array.isArray(data)) {
         setAgreements(data);
-      } else {
-        console.error('API returned error:', data.error);
+
+        const ids = [...new Set(data.map((ag: EscrowAgreement) => ag.consultant_id).filter(Boolean))];
+        if (ids.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', ids);
+          setProfileNames(
+            Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name ?? '']))
+          );
+        }
       }
     } catch (err) {
       console.error('Failed to load escrow data:', err);
@@ -22,9 +42,7 @@ export default function EscrowAdminPage() {
     }
   };
 
-  useEffect(() => {
-    loadCompleted();
-  }, []);
+  useEffect(() => { loadCompleted(); }, []);
 
   const releasePayment = async (agreementId: string) => {
     setReleasing(agreementId);
@@ -36,51 +54,80 @@ export default function EscrowAdminPage() {
       });
       const data = await res.json();
       if (data.success) {
-        alert('Payment released successfully!');
         loadCompleted();
       } else {
         alert('Error: ' + (data.error || 'Unknown error'));
       }
-    } catch (err) {
+    } catch {
       alert('Network error');
     } finally {
       setReleasing(null);
     }
   };
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <p className="text-slate-400 text-sm">Loading escrow data...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-2">Escrow – Release Payments</h1>
-        <p className="text-gray-500 mb-6">Agreements that have been approved by students and are ready for fund release.</p>
-        {agreements.length === 0 ? (
-          <p className="text-gray-500">No pending releases.</p>
-        ) : (
-          <div className="space-y-4">
-            {agreements.map((ag) => (
-              <div key={ag.id} className="bg-white rounded-lg shadow p-4 border">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-medium text-gray-800">{ag.requests?.title || 'Untitled Request'}</p>
-                    <p className="text-sm text-gray-500">Consultant ID: {ag.consultant_id}</p>
-                    <p className="text-sm text-gray-500">Amount: ₦{ag.price?.toLocaleString()}</p>
-                    <p className="text-xs text-gray-400 mt-1">Paystack ref: {ag.paystack_ref}</p>
+    <div>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-slate-900">Escrow Releases</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Agreements approved by students and awaiting payment release to consultants.
+        </p>
+      </div>
+
+      {agreements.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center shadow-sm">
+          <p className="text-slate-400 text-sm">No pending releases.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {agreements.map((ag) => {
+            const consultantName = profileNames[ag.consultant_id];
+            return (
+              <div key={ag.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1.5">
+                    <p className="font-semibold text-slate-900 text-sm">
+                      {ag.requests?.title || 'Untitled request'}
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      Consultant:{' '}
+                      <span className="font-medium">
+                        {consultantName || ag.consultant_id}
+                      </span>
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      Amount:{' '}
+                      <span className="font-semibold text-slate-800">
+                        NGN {ag.price?.toLocaleString() ?? 'N/A'}
+                      </span>
+                    </p>
+                    {ag.paystack_ref && (
+                      <p className="text-xs text-slate-400 font-mono">
+                        Ref: {ag.paystack_ref}
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={() => releasePayment(ag.id)}
-                    disabled={releasing === ag.id}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                    disabled={releasing !== null}
+                    className="shrink-0 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
                   >
-                    {releasing === ag.id ? 'Releasing...' : 'Release Payment'}
+                    {releasing === ag.id ? 'Releasing...' : 'Release payment'}
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
