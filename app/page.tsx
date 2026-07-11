@@ -70,7 +70,7 @@ async function getStats(): Promise<SiteStats> {
 function HeroIllustration() {
   return (
     <div className="relative w-full max-w-xs mx-auto lg:mx-0">
-      <div className="absolute -bottom-3 -right-3 w-full h-full bg-indigo-500/20 rounded-2xl" />
+      <div className="absolute bottom-0 right-0 translate-x-3 translate-y-3 w-full h-full bg-indigo-500/20 rounded-2xl" />
       <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100">
         <div className="bg-indigo-600 px-5 py-4">
           <div className="flex items-center justify-between">
@@ -325,7 +325,7 @@ export default async function HomePage() {
               <div className="mt-8 flex gap-3 animate-slide-up">
                 <Link
                   href="/login"
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white text-indigo-700 font-semibold px-5 py-3 sm:px-6 rounded-xl shadow-md hover:shadow-xl hover:bg-indigo-50 hover:-translate-y-0.5 transition-all duration-200 text-sm"
+                  className="flex-1 min-w-0 inline-flex items-center justify-center gap-2 bg-white text-indigo-700 font-semibold px-5 py-3 rounded-xl shadow-md hover:shadow-xl hover:bg-indigo-50 hover:-translate-y-0.5 transition-all duration-200 text-sm"
                 >
                   Get started free
                   <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -334,9 +334,9 @@ export default async function HomePage() {
                 </Link>
                 <Link
                   href="/how-it-works"
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 border border-indigo-400/40 text-indigo-200 font-semibold px-5 py-3 sm:px-6 rounded-xl hover:bg-indigo-800/40 hover:border-indigo-300/60 transition-all duration-200 text-sm"
+                  className="flex-1 min-w-0 inline-flex items-center justify-center gap-2 border border-indigo-400/40 text-indigo-200 font-semibold px-5 py-3 rounded-xl hover:bg-indigo-800/40 hover:border-indigo-300/60 transition-all duration-200 text-sm"
                 >
-                  See how it works
+                  How it works
                 </Link>
               </div>
             </div>
