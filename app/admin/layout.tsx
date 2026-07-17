@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const STORAGE_KEY = 'accordiax_admin_auth';
 
 const navItems = [
+  { label: 'Disputes', href: '/admin/disputes' },
   { label: 'Appeals', href: '/admin' },
   { label: 'Verification', href: '/admin/verification' },
   { label: 'Escrow', href: '/admin/escrow' },
