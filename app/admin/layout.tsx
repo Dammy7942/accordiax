@@ -9,7 +9,7 @@ const navItems = [
   { label: 'Disputes', href: '/admin/disputes' },
   { label: 'Appeals', href: '/admin' },
   { label: 'Verification', href: '/admin/verification' },
-  { label: 'Escrow', href: '/admin/escrow' },
+  { label: 'Funds', href: '/admin/escrow' },
   { label: 'Reports', href: '/admin/reports' },
   { label: 'Payouts', href: '/admin/payouts' },
 ];

@@ -17,8 +17,9 @@ export async function GET() {
         consultant_id,
         requests ( title )
       `)
-      .eq('status', 'completed')
-      .eq('payment_released', false);
+      .in('status', ['paid_held', 'delivered', 'completed'])
+      .eq('payment_released', false)
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('API Error:', error);

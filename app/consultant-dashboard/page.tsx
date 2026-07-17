@@ -162,6 +162,8 @@ export default function ConsultantDashboard() {
   const [selectedBankAccountId, setSelectedBankAccountId] = useState('');
   const [submittingPaymentReq, setSubmittingPaymentReq] = useState(false);
   const [existingPaymentReqIds, setExistingPaymentReqIds] = useState<Set<string>>(new Set());
+  const [inlineAccountForm, setInlineAccountForm] = useState({ bank_name: '', account_number: '', account_name: '' });
+  const [addingInlineAccount, setAddingInlineAccount] = useState(false);
 
   const { toasts, toast, dismiss } = useToast();
 
@@ -584,6 +586,27 @@ export default function ConsultantDashboard() {
       setPaymentReqModalOpen(false);
       toast('Payment request submitted. The admin will process it shortly.', 'success');
     }
+  };
+
+  const handleAddInlineAccount = async () => {
+    const { bank_name, account_number, account_name } = inlineAccountForm;
+    if (!bank_name || !account_number || !account_name) { toast('Please fill all account fields.', 'error'); return; }
+    if (!currentUserId) return;
+    setAddingInlineAccount(true);
+    const { data: newAccount, error } = await supabase.from('bank_accounts').insert({
+      consultant_id: currentUserId,
+      bank_name,
+      account_number,
+      account_name,
+      is_default: true,
+    }).select().single();
+    setAddingInlineAccount(false);
+    if (error) { toast(error.message, 'error'); return; }
+    const updated = [...bankAccounts, newAccount as BankAccount];
+    setBankAccounts(updated);
+    setSelectedBankAccountId((newAccount as BankAccount).id);
+    setInlineAccountForm({ bank_name: '', account_number: '', account_name: '' });
+    toast('Bank account saved.', 'success');
   };
 
   const submitRating = async () => {
@@ -1267,12 +1290,32 @@ export default function ConsultantDashboard() {
           </div>
 
           {bankAccounts.length === 0 ? (
-            <div className="text-center py-4">
-              <p className="text-sm text-slate-500 mb-3">You have no bank accounts saved. Add one on your profile page first.</p>
-              <a href="/profile" className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-                Go to Profile
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-              </a>
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-slate-700">Add a bank account to receive payment</p>
+              <input
+                type="text"
+                placeholder="Bank name (e.g. Access, GTBank, OPay)"
+                value={inlineAccountForm.bank_name}
+                onChange={e => setInlineAccountForm(f => ({ ...f, bank_name: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+              />
+              <input
+                type="text"
+                placeholder="Account number"
+                value={inlineAccountForm.account_number}
+                onChange={e => setInlineAccountForm(f => ({ ...f, account_number: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+              />
+              <input
+                type="text"
+                placeholder="Account name"
+                value={inlineAccountForm.account_name}
+                onChange={e => setInlineAccountForm(f => ({ ...f, account_name: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+              />
+              <Button onClick={handleAddInlineAccount} loading={addingInlineAccount} className="w-full">
+                Save &amp; Continue
+              </Button>
             </div>
           ) : (
             <>
