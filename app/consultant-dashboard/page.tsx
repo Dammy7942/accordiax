@@ -47,6 +47,14 @@ interface Agreement {
   price_proposed_by?: string;
 }
 
+interface BankAccount {
+  id: string;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  is_default: boolean;
+}
+
 interface ProfileStats {
   full_name: string;
   total_agreements: number;
@@ -147,6 +155,13 @@ export default function ConsultantDashboard() {
   const [selectedAgreementForPrice, setSelectedAgreementForPrice] = useState<Agreement | null>(null);
   const [proposedPrice, setProposedPrice] = useState('');
   const [submittingPrice, setSubmittingPrice] = useState(false);
+
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [paymentReqModalOpen, setPaymentReqModalOpen] = useState(false);
+  const [paymentReqAgreement, setPaymentReqAgreement] = useState<Agreement | null>(null);
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState('');
+  const [submittingPaymentReq, setSubmittingPaymentReq] = useState(false);
+  const [existingPaymentReqIds, setExistingPaymentReqIds] = useState<Set<string>>(new Set());
 
   const { toasts, toast, dismiss } = useToast();
 
@@ -269,6 +284,14 @@ export default function ConsultantDashboard() {
           setShowProposalModal(true);
         }
       }
+
+      // Load bank accounts and existing payment requests
+      const [{ data: accounts }, { data: payReqs }] = await Promise.all([
+        supabase.from('bank_accounts').select('id, bank_name, account_number, account_name, is_default').eq('consultant_id', user.id).order('created_at', { ascending: true }),
+        supabase.from('payment_requests').select('agreement_id').eq('consultant_id', user.id),
+      ]);
+      setBankAccounts(accounts ?? []);
+      setExistingPaymentReqIds(new Set((payReqs ?? []).map((r: any) => r.agreement_id)));
 
       setLoading(false);
     };
@@ -536,6 +559,33 @@ export default function ConsultantDashboard() {
 
   const openRatingModal = (agreement: Agreement) => { setRatingForAgreement(agreement); setRatingValue(0); setRatingModalOpen(true); };
 
+  const openPaymentReqModal = (offer: Agreement) => {
+    setPaymentReqAgreement(offer);
+    const def = bankAccounts.find(a => a.is_default) ?? bankAccounts[0];
+    setSelectedBankAccountId(def?.id ?? '');
+    setPaymentReqModalOpen(true);
+  };
+
+  const submitPaymentRequest = async () => {
+    if (!paymentReqAgreement || !currentUserId) return;
+    if (!selectedBankAccountId) { toast('Please select a bank account.', 'error'); return; }
+    setSubmittingPaymentReq(true);
+    const { error } = await supabase.from('payment_requests').insert({
+      agreement_id: paymentReqAgreement.id,
+      consultant_id: currentUserId,
+      bank_account_id: selectedBankAccountId,
+      amount: paymentReqAgreement.price,
+    });
+    setSubmittingPaymentReq(false);
+    if (error) {
+      toast(error.message, 'error');
+    } else {
+      setExistingPaymentReqIds(prev => new Set([...prev, paymentReqAgreement.id]));
+      setPaymentReqModalOpen(false);
+      toast('Payment request submitted. The admin will process it shortly.', 'success');
+    }
+  };
+
   const submitRating = async () => {
     if (!ratingForAgreement || ratingValue === 0) return;
     const { error } = await supabase.from('agreements').update({ rating_given: true, rating: ratingValue }).eq('id', ratingForAgreement.id);
@@ -703,6 +753,19 @@ export default function ConsultantDashboard() {
           <button onClick={() => openRatingModal(offer)} className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 hover:text-amber-800 transition-colors">
             <StarIcon /> Rate Student
           </button>
+        )}
+        {offer.status === 'completed' && (
+          existingPaymentReqIds.has(offer.id) ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              Payment requested
+            </span>
+          ) : (
+            <button onClick={() => openPaymentReqModal(offer)} className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-800 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+              Request Payment
+            </button>
+          )
         )}
         {offer.status === 'accepted' && !offer.proposed_price && (
           <Button variant="outline" size="sm" onClick={() => { setSelectedAgreementForPrice(offer); setProposedPrice(''); setPriceProposalModalOpen(true); }}>
@@ -1193,6 +1256,56 @@ export default function ConsultantDashboard() {
       </Modal>
 
       <ReportModal isOpen={reportModalOpen} onClose={() => setReportModalOpen(false)} reportedUserId={reportedUserId} agreementId={reportAgreementId} />
+
+      {/* Payment request modal */}
+      <Modal isOpen={paymentReqModalOpen} onClose={() => setPaymentReqModalOpen(false)} title="Request Payment">
+        <div className="space-y-5">
+          <div className="bg-slate-50 rounded-xl p-4 space-y-1.5">
+            <p className="text-xs font-medium text-slate-400">Agreement</p>
+            <p className="text-sm font-semibold text-slate-800">{paymentReqAgreement?.request_title}</p>
+            <p className="text-lg font-extrabold text-slate-900 tabular-nums">₦{paymentReqAgreement?.price.toLocaleString()}</p>
+          </div>
+
+          {bankAccounts.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-slate-500 mb-3">You have no bank accounts saved. Add one on your profile page first.</p>
+              <a href="/profile" className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+                Go to Profile
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              </a>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Select bank account to receive payment</p>
+                {bankAccounts.map(account => (
+                  <label key={account.id} className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors ${selectedBankAccountId === account.id ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                    <input
+                      type="radio"
+                      name="bank_account"
+                      value={account.id}
+                      checked={selectedBankAccountId === account.id}
+                      onChange={() => setSelectedBankAccountId(account.id)}
+                      className="accent-indigo-600"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-800">{account.bank_name}</span>
+                        {account.is_default && <span className="text-xs bg-indigo-100 text-indigo-700 font-semibold px-1.5 py-0.5 rounded-full">Default</span>}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">{account.account_number} &middot; {account.account_name}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400">The admin team will verify your account details and process the transfer manually. You will be notified once paid.</p>
+              <Button onClick={submitPaymentRequest} loading={submittingPaymentReq} className="w-full">
+                Submit Payment Request
+              </Button>
+            </>
+          )}
+        </div>
+      </Modal>
 
       <ToastContainer toasts={toasts} onDismiss={dismiss} />
     </div>
