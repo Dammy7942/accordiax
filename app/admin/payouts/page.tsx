@@ -27,6 +27,7 @@ function fmt(dateStr: string) {
 export default function AdminPayoutsPage() {
   const [requests, setRequests] = useState<PayoutRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'paid'>('pending');
@@ -35,11 +36,20 @@ export default function AdminPayoutsPage() {
 
   const load = async () => {
     setLoading(true);
+    setApiError(null);
     try {
       const res = await fetch('/api/admin/payouts');
       const data = await res.json();
-      setRequests(res.ok && Array.isArray(data) ? data : []);
-    } catch { setRequests([]); }
+      if (!res.ok) {
+        setApiError(data?.error ?? `HTTP ${res.status}`);
+        setRequests([]);
+      } else {
+        setRequests(Array.isArray(data) ? data : []);
+      }
+    } catch (err: any) {
+      setApiError(err?.message ?? 'Network error');
+      setRequests([]);
+    }
     finally { setLoading(false); }
   };
 
@@ -88,6 +98,12 @@ export default function AdminPayoutsPage() {
           </button>
         ))}
       </div>
+
+      {apiError && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <p className="text-sm text-red-700 font-medium">API error: {apiError}</p>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-3">
