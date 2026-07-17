@@ -5,8 +5,8 @@ export async function GET() {
   try {
     const { data: payRequests, error } = await supabaseAdmin
       .from('payment_requests')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .select('id, amount, status, admin_notes, requested_at, processed_at, agreement_id, consultant_id, bank_account_id')
+      .order('requested_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!payRequests || payRequests.length === 0) return NextResponse.json([]);
